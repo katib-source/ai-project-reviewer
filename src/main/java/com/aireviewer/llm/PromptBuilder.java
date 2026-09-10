@@ -75,10 +75,10 @@ public final class PromptBuilder {
     private static final String TRUNCATION_MARKER = "\n\n[truncated]";
 
     /** Low but non-zero: evaluations should be near-reproducible without pinning the model to one phrasing. */
-    private static final double TEMPERATURE = 0.2;
+    private static final double DEFAULT_TEMPERATURE = LLMSettings.DEFAULT_TEMPERATURE;
 
     /** Enough for a JSON object with three short prose lists, not enough to ramble. */
-    private static final int MAX_OUTPUT_TOKENS = 900;
+    private static final int DEFAULT_MAX_OUTPUT_TOKENS = LLMSettings.DEFAULT_MAX_OUTPUT_TOKENS;
 
     /** Invisible characters: zero-width, bidi overrides, soft hyphen, BOM, Unicode tag chars. */
     private static final Pattern INVISIBLE_CHARS =
@@ -94,20 +94,50 @@ public final class PromptBuilder {
     private static final PromptInjectionDetector DETECTOR = new PromptInjectionDetector();
 
     private final int maxContentChars;
+    private final double temperature;
+    private final int maxOutputTokens;
 
-    /** Uses {@link #DEFAULT_MAX_CONTENT_CHARS}. */
+    /** Uses {@link #DEFAULT_MAX_CONTENT_CHARS} and the default sampling settings. */
     public PromptBuilder() {
-        this(DEFAULT_MAX_CONTENT_CHARS);
+        this(DEFAULT_MAX_CONTENT_CHARS, DEFAULT_TEMPERATURE, DEFAULT_MAX_OUTPUT_TOKENS);
     }
 
     /**
      * @param maxContentChars cap on sanitized content characters; must be positive
      */
     public PromptBuilder(int maxContentChars) {
+        this(maxContentChars, DEFAULT_TEMPERATURE, DEFAULT_MAX_OUTPUT_TOKENS);
+    }
+
+    /**
+     * Takes the sampling settings from configuration, so temperature and answer length are decided
+     * by the composition root rather than frozen in this class.
+     *
+     * @param settings the package's settings, never {@code null}
+     */
+    public PromptBuilder(LLMSettings settings) {
+        this(DEFAULT_MAX_CONTENT_CHARS, settings.temperature(), settings.maxOutputTokens());
+    }
+
+    /**
+     * @param maxContentChars cap on sanitized content characters; must be positive
+     * @param temperature     sampling temperature to request
+     * @param maxOutputTokens cap on answer length to request
+     */
+    public PromptBuilder(int maxContentChars, double temperature, int maxOutputTokens) {
         if (maxContentChars <= 0) {
             throw new IllegalArgumentException("maxContentChars must be positive but was " + maxContentChars);
         }
+        if (!Double.isFinite(temperature) || temperature < 0) {
+            throw new IllegalArgumentException("temperature must be non-negative but was " + temperature);
+        }
+        if (maxOutputTokens < 1) {
+            throw new IllegalArgumentException(
+                    "maxOutputTokens must be at least 1 but was " + maxOutputTokens);
+        }
         this.maxContentChars = maxContentChars;
+        this.temperature = temperature;
+        this.maxOutputTokens = maxOutputTokens;
     }
 
     /**
@@ -157,8 +187,8 @@ public final class PromptBuilder {
                 instructions(criterion, token, truncated),
                 delimitedContent(sanitized, token),
                 responseFormat(criterion),
-                TEMPERATURE,
-                MAX_OUTPUT_TOKENS);
+                temperature,
+                maxOutputTokens);
 
         return new PreparedPrompt(request, signals, truncated);
     }

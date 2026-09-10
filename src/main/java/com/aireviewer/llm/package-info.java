@@ -6,7 +6,8 @@
  * <h2>What a caller outside this package needs to know</h2>
  * Five types, and nothing else:
  * <ul>
- *   <li>{@link com.aireviewer.llm.LLMProviderFactory} — builds a provider from configuration values.
+ *   <li>{@link com.aireviewer.llm.LLMProviderFactory} with
+ *       {@link com.aireviewer.llm.LLMSettings} — builds a provider from configuration values.
  *       Called <b>once</b>, by the composition root in {@code application}.</li>
  *   <li>{@link com.aireviewer.llm.LLMProvider} — the contract you are handed. Never construct a
  *       concrete provider yourself.</li>
@@ -31,9 +32,9 @@
  *     private final PromptBuilder promptBuilder;   // one instance is enough, it is thread-safe
  *     private final LLMResponseValidator validator;
  *
- *     public LlmCriterionAnalyzer(LLMProvider provider) {
+ *     public LlmCriterionAnalyzer(LLMProvider provider, PromptBuilder promptBuilder) {
  *         this.provider = provider;
- *         this.promptBuilder = new PromptBuilder();
+ *         this.promptBuilder = promptBuilder;
  *         this.validator = new LLMResponseValidator();
  *     }
  *
@@ -63,7 +64,7 @@
  *         // 5. Map to your own type. Optional fields really are optional.
  *         double score = evaluation.score();
  *         double scale = evaluation.maxScore().orElse(criterion.maxScore());
- *         boolean degraded = response.fromFallback();  // worth reporting: not the primary model
+ *         boolean degraded = evaluation.fromFallback();  // a fallback answered: say so in the report
  *         return CriterionResult.of(criterionId, score, scale, evaluation.strengths(),
  *                 evaluation.weaknesses(), evaluation.recommendations(), degraded);
  *     }
@@ -73,17 +74,19 @@
  * And once, in the composition root:
  *
  * <pre>{@code
- * LLMProvider provider = LLMProviderFactory.create(
- *         config.llmKind(),          // "mock" | "mistral" | "local"
- *         config.mistralApiKey(),    // null or blank is fine unless kind is "mistral"
- *         config.mistralModel(),     // null or blank uses the provider default
- *         config.localBaseUrl(),
- *         config.localModel(),
- *         config.maxAttempts(),      // e.g. 3
- *         config.retryDelay());      // e.g. Duration.ofSeconds(2)
+ * // Start from the offline defaults, then apply whatever configuration was read.
+ * LLMSettings settings = LLMSettings.defaults()
+ *         .withMistral(config.mistralApiKey(), config.mistralModel())  // or .withLocal(url, model)
+ *         .withResilience(3, Duration.ofSeconds(2));
  *
- * engine.register(new LlmCriterionAnalyzer(provider));
+ * LLMProvider provider = LLMProviderFactory.create(settings);
+ *
+ * // The same settings decide temperature and answer length for every prompt.
+ * engine.register(new LlmCriterionAnalyzer(provider, new PromptBuilder(settings)));
  * }</pre>
+ *
+ * <p>{@link com.aireviewer.llm.LLMSettings#defaults()} needs no key, no network and no local
+ * server, so leaving configuration empty gives a working offline system rather than a crash.</p>
  *
  * <h2>Rules for callers</h2>
  * <ul>
@@ -99,9 +102,10 @@
  *       failed result for that criterion. One unavailable provider must not abort an analysis run.
  *       {@link com.aireviewer.llm.LLMException.Kind#isRetryable()} is already handled inside the
  *       provider — do not add retry logic of your own.</li>
- *   <li><b>Report {@link com.aireviewer.llm.LLMResponse#fromFallback()}.</b> {@code true} means the
- *       configured provider failed and a fallback answered, so the evaluation is degraded; a reader
- *       of the report deserves to know that.</li>
+ *   <li><b>Report {@link com.aireviewer.llm.LLMEvaluation#fromFallback()}.</b> {@code true} means the
+ *       configured provider failed and a fallback answered, so the score is a placeholder rather
+ *       than a judgement. Carry it into your own result type and mark it in the report — an
+ *       invented score presented as a real one is the worst thing this package could cause.</li>
  *   <li><b>Never log an API key, a request body or a whole file's content</b> (CLAUDE.md §4).</li>
  *   <li><b>Tests never touch the network.</b> Inject {@link com.aireviewer.llm.MockLLMProvider} for
  *       the happy path and {@link com.aireviewer.llm.MockLLMProvider#alwaysFailing()} for failure

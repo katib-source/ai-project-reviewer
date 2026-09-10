@@ -346,9 +346,11 @@ class OpenAiCompatibleLLMProviderTest {
                 mistralAt(baseUrl), new MockLLMProvider(), 2, Duration.ZERO);
 
         LLMResponse response = provider.complete(request());
+        LLMEvaluation evaluation = new LLMResponseValidator().validate(response);
 
         assertTrue(response.fromFallback(), "two failed attempts, then the mock answered");
         assertEquals("mock", response.model());
+        assertTrue(evaluation.fromFallback(), "and the validated evaluation says so too");
     }
 
     @Test

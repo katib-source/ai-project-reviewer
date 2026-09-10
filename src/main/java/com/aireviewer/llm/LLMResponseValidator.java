@@ -33,6 +33,10 @@ import java.util.regex.Pattern;
  * evaluation. Being lenient about decoration and strict about the number is what keeps LLM-backed
  * criteria usable in practice.
  *
+ * <p>It also carries {@link LLMResponse#fromFallback()} across into the
+ * {@link LLMEvaluation}. Validation is the last place where the raw response and the parsed result
+ * are both in hand, so a flag not copied here is a flag that silently disappears.
+ *
  * <p>Stateless and thread-safe: the analysis engine may validate several answers concurrently.
  */
 public final class LLMResponseValidator {
@@ -88,7 +92,11 @@ public final class LLMResponseValidator {
                 readMaxScore(root),
                 readStringList(root, EvaluationSchema.FIELD_STRENGTHS),
                 readStringList(root, EvaluationSchema.FIELD_WEAKNESSES),
-                readStringList(root, EvaluationSchema.FIELD_RECOMMENDATIONS));
+                readStringList(root, EvaluationSchema.FIELD_RECOMMENDATIONS),
+                // Provenance travels with the result. Validation is the last point where both the
+                // raw response and the parsed evaluation are in hand, so if the flag is not copied
+                // here it is lost for good.
+                response.fromFallback());
     }
 
     /**

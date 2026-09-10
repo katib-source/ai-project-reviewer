@@ -1,6 +1,5 @@
 package com.aireviewer.llm;
 
-import java.time.Duration;
 import java.util.Locale;
 import java.util.Objects;
 import org.slf4j.Logger;
@@ -33,12 +32,11 @@ import org.slf4j.LoggerFactory;
  *
  * <h2>Usage</h2>
  * <pre>{@code
- * LLMProvider provider = LLMProviderFactory.create(
- *         LLMProviderFactory.KIND_MISTRAL,   // from configuration
- *         System.getenv("MISTRAL_API_KEY"),  // resolved by the composition root, never here
- *         null,                              // model: null or blank uses the provider default
- *         null, null,                        // local server settings, unused for this kind
- *         3, Duration.ofSeconds(2));         // resilience: attempts and delay
+ * LLMSettings settings = LLMSettings.defaults()
+ *         .withMistral(System.getenv("MISTRAL_API_KEY"), null)  // null model: provider default
+ *         .withResilience(3, Duration.ofSeconds(2));
+ *
+ * LLMProvider provider = LLMProviderFactory.create(settings);
  * }</pre>
  *
  * <p>The full handoff example for a caller — building a request, sending it, validating the answer
@@ -75,47 +73,33 @@ public final class LLMProviderFactory {
      * to that provider's documented default, but silently defaulting a credential would turn a
      * configuration mistake into a confusing HTTP 401 later.
      *
-     * @param kind            which provider to build: {@link #KIND_MOCK}, {@link #KIND_MISTRAL} or
-     *                        {@link #KIND_LOCAL}. Case and surrounding whitespace are ignored
-     * @param mistralApiKey   Mistral API key; required for {@link #KIND_MISTRAL}, ignored otherwise
-     * @param mistralModel    Mistral model name, or {@code null}/blank for
-     *                        {@link MistralLLMProvider#DEFAULT_MODEL}
-     * @param localBaseUrl    local server root, or {@code null}/blank for
-     *                        {@link LocalLmStudioProvider#DEFAULT_BASE_URL}
-     * @param localModel      local model name, or {@code null}/blank for
-     *                        {@link LocalLmStudioProvider#DEFAULT_MODEL}
-     * @param maxAttempts     attempts against the chosen provider before falling back, at least 1
-     * @param retryDelay      wait between attempts; {@link Duration#ZERO} for none
+     * @param settings where to send prompts and how hard to try, never {@code null}. Build one with
+     *                 {@link LLMSettings#defaults()} and its {@code with*} methods
      * @return a ready-to-use provider, never {@code null}
      * @throws IllegalArgumentException if the kind is unrecognized, or the configuration for the
      *                                  requested kind is unusable. Thrown at startup on purpose: a
      *                                  config mistake should stop the application immediately, not
      *                                  surface as a puzzling failure on the first evaluation
      */
-    public static LLMProvider create(
-            String kind,
-            String mistralApiKey,
-            String mistralModel,
-            String localBaseUrl,
-            String localModel,
-            int maxAttempts,
-            Duration retryDelay) {
+    public static LLMProvider create(LLMSettings settings) {
+        Objects.requireNonNull(settings, "settings");
 
-        String normalizedKind = normalize(kind);
+        String normalizedKind = normalize(settings.kind());
         LLMProvider primary = switch (normalizedKind) {
             case KIND_MOCK -> new MockLLMProvider();
-            case KIND_MISTRAL -> mistral(mistralApiKey, mistralModel);
-            case KIND_LOCAL -> local(localBaseUrl, localModel);
+            case KIND_MISTRAL -> mistral(settings);
+            case KIND_LOCAL -> local(settings);
             default -> throw new IllegalArgumentException(
-                    "Unknown LLM provider kind '" + kind + "'. Valid kinds are '" + KIND_MOCK
-                            + "', '" + KIND_MISTRAL + "' and '" + KIND_LOCAL + "'.");
+                    "Unknown LLM provider kind '" + settings.kind() + "'. Valid kinds are '"
+                            + KIND_MOCK + "', '" + KIND_MISTRAL + "' and '" + KIND_LOCAL + "'.");
         };
 
-        LLMProvider resilient =
-                new ResilientLLMProvider(primary, new MockLLMProvider(), maxAttempts, retryDelay);
+        LLMProvider resilient = new ResilientLLMProvider(
+                primary, new MockLLMProvider(), settings.maxAttempts(), settings.retryDelay());
 
+        // The settings object hides the API key in toString(), so this line is safe to log.
         LOG.info("LLM provider ready: {} (up to {} attempt(s), {} between retries, mock fallback)",
-                resilient.describe(), maxAttempts, retryDelay);
+                resilient.describe(), settings.maxAttempts(), settings.retryDelay());
 
         return resilient;
     }
@@ -136,13 +120,13 @@ public final class LLMProviderFactory {
      * teammate at 3am. A bare {@link NullPointerException} from a null key would be worse than
      * either.
      */
-    private static LLMProvider mistral(String apiKey, String model) {
+    private static LLMProvider mistral(LLMSettings settings) {
         try {
             return new MistralLLMProvider(
                     MistralLLMProvider.DEFAULT_BASE_URL,
-                    orDefault(model, MistralLLMProvider.DEFAULT_MODEL),
-                    apiKey == null ? "" : apiKey,
-                    MistralLLMProvider.DEFAULT_TIMEOUT);
+                    orDefault(settings.mistralModel(), MistralLLMProvider.DEFAULT_MODEL),
+                    settings.mistralApiKey(),
+                    settings.providerTimeout().orElse(MistralLLMProvider.DEFAULT_TIMEOUT));
         } catch (IllegalArgumentException invalid) {
             throw new IllegalArgumentException(
                     "LLM provider kind '" + KIND_MISTRAL + "' is not usable: " + invalid.getMessage()
@@ -153,12 +137,12 @@ public final class LLMProviderFactory {
         }
     }
 
-    private static LLMProvider local(String baseUrl, String model) {
+    private static LLMProvider local(LLMSettings settings) {
         try {
             return new LocalLmStudioProvider(
-                    orDefault(baseUrl, LocalLmStudioProvider.DEFAULT_BASE_URL),
-                    orDefault(model, LocalLmStudioProvider.DEFAULT_MODEL),
-                    LocalLmStudioProvider.DEFAULT_TIMEOUT);
+                    orDefault(settings.localBaseUrl(), LocalLmStudioProvider.DEFAULT_BASE_URL),
+                    orDefault(settings.localModel(), LocalLmStudioProvider.DEFAULT_MODEL),
+                    settings.providerTimeout().orElse(LocalLmStudioProvider.DEFAULT_TIMEOUT));
         } catch (IllegalArgumentException invalid) {
             throw new IllegalArgumentException(
                     "LLM provider kind '" + KIND_LOCAL + "' is not usable: " + invalid.getMessage()

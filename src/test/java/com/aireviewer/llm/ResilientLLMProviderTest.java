@@ -230,7 +230,9 @@ class ResilientLLMProviderTest {
         LLMEvaluation evaluation = new LLMResponseValidator().validate(response);
 
         assertEquals("coupling", evaluation.criterion().orElseThrow());
-        assertTrue(response.fromFallback(), "the report must be able to say the evaluation was degraded");
+        assertTrue(response.fromFallback());
+        assertTrue(evaluation.fromFallback(),
+                "the flag must survive validation: this is what the report reads");
     }
 
     @Test

@@ -226,6 +226,18 @@ class PromptBuilderTest {
     }
 
     @Test
+    @DisplayName("sampling settings come from configuration when settings are supplied")
+    void takesSamplingSettingsFromConfiguration() {
+        PromptBuilder configured =
+                new PromptBuilder(LLMSettings.defaults().withSampling(0.7, 250));
+
+        LLMRequest request = configured.build(criterion(), "class Foo {}");
+
+        assertEquals(0.7, request.temperature());
+        assertEquals(250, request.maxOutputTokens());
+    }
+
+    @Test
     @DisplayName("null content is treated as empty, and bad inputs are rejected loudly")
     void handlesEdgeInputs() {
         LLMRequest request = builder.build(criterion(), null);
