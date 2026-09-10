@@ -24,8 +24,13 @@ web (React, via HTTP)  →  application (Facade)  →  { project, analysis, llm,
 Three boundaries are absolute — **never** cross them, even "just this once":
 
 1. `com.aireviewer.analysis` never imports Docker, HTTP, Javalin, Swing or any UI type, and
-   depends on `llm` **only** through the `LLMProvider` / `LLMException` interfaces handed to it by
-   **constructor injection** — never by calling a factory, a static, or a concrete provider itself.
+   depends on `llm` **only** through that package's public API — `LLMProvider`, `LLMRequest`,
+   `LLMResponse`, `LLMEvaluation`, `LLMException`, `PromptBuilder`, `PromptCriterion`,
+   `PreparedPrompt`, `LLMResponseValidator`, `LLMProviderFactory`, `LLMSettings` — with the provider handed to it
+   by **constructor injection**. Never a concrete provider (`MistralLLMProvider`,
+   `LocalLmStudioProvider`, `MockLLMProvider` outside tests), never
+   `OpenAiCompatibleLLMProvider`, never a vendor or HTTP type. `analysis` does not call the factory
+   either: the composition root does that and injects the result.
 2. `com.aireviewer.llm` never imports any UI / HTTP / web type of ours (an HTTP *client* for
    talking to a vendor API is fine — that is what the package is for).
 3. `web` (and any future UI) never calls `project`, `analysis`, `llm`, `security`, `report` or
@@ -50,7 +55,7 @@ assistants can see what is safe to build on.
 | `com.aireviewer.persistence` | role 1 | TODO | JSON history of past analyses |
 | `com.aireviewer.analysis` | role 2 | TODO | `Analyzer` (Strategy), `AbstractAnalyzer` (Template Method), `AnalysisEngine` (registry + runner + consolidator), `AnalysisListener` (Observer) |
 | `com.aireviewer.analysis.analyzers` | role 2 | TODO | 2 deterministic analyzers + the LLM-backed analyzer bridge |
-| `com.aireviewer.llm` | role 3 | TODO | `LLMProvider` (Adapter) + Mock/Mistral/LM-Studio adapters, Factory, `ResilientLLMProvider` (Decorator), prompt building, JSON response validation |
+| `com.aireviewer.llm` | role 3 | DONE | `LLMProvider` (Adapter) + Mock/Mistral/Groq/LM-Studio adapters, Factory, `ResilientLLMProvider` (Decorator), prompt building with injection defense, JSON response validation |
 | `com.aireviewer.security` | role 4 | TODO | `Sandbox` + `DockerSandbox` (least-privilege `docker run`), owns `sandbox/Dockerfile` |
 | `com.aireviewer.report` | role 5 | TODO | LaTeX escaping, `LatexReportBuilder` (Builder), optional `pdflatex` compilation |
 | `com.aireviewer.application` | role 5 | TODO | `ReviewService` Facade + `Main` composition root |
@@ -99,6 +104,13 @@ don't redesign without talking to the owner.
   failure-simulating instance for resilience tests) and a fake in-memory `Sandbox`. This is a hard
   subject requirement, not a preference — a test that needs network or Docker will be rejected in
   review.
+- **Two documented exceptions:** `llm/MistralLiveSmokeCheck` and `llm/GroqLiveSmokeCheck` make a
+  real call to their vendor so a human can verify the required genuine LLM call. Neither is named
+  `*Test`, so Surefire never discovers them, and each is gated on its own key
+  (`MISTRAL_API_KEY`, `GROQ_API_KEY`) so it skips rather than fails. Run by hand
+  (`mvn test -Dtest=GroqLiveSmokeCheck -DfailIfNoTests=false`), never in CI. Groq's free tier needs
+  no billing setup, so prefer it for a quick verification. Don't add a third, and don't rename
+  these to `*Test`.
 - Every new `Analyzer`, `LLMProvider` adapter, inclusion rule, consolidator change or report
   builder method needs at least one test before it counts as done.
 - `mvn test` must be green before you push. A red build blocks merging into `main`.
@@ -153,9 +165,12 @@ cd frontend && npm install && npm run dev         # frontend dev server (role 6)
 
 ## 7. Extension recipes (these are literally report questions — they must stay true)
 
-- **New LLM provider:** one new class in `llm/` implementing `LLMProvider` (or extending the
-  shared OpenAI-compatible base when the API shape matches), plus one new branch in the provider
-  factory. Nothing else changes.
+- **New LLM provider:** one new class in `llm/` implementing `LLMProvider` (or extending
+  `OpenAiCompatibleLLMProvider` when the API shape matches), one new branch in `LLMProviderFactory`,
+  and — for a vendor needing its own credentials — a key/model field pair plus a `with*` method on
+  `LLMSettings`. Nothing in `analysis`, `application`, `report` or `web` changes. *Measured, not
+  assumed:* adding Groq cost exactly that — 2 existing classes touched (§7's limit), 1 new adapter,
+  1 new manual live check, and 3 new assertions' worth of test updates.
 - **New deterministic criterion:** one new class in `analysis/analyzers/` extending
   `AbstractAnalyzer`, registered with the engine at startup (composition root). Nothing else
   changes.
