@@ -8,43 +8,15 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Tests unitaires du sandbox.
+ * Ne dépendent NI de Docker, NI d'un chemin local.
+ * Doivent passer sur n'importe quelle machine, même sans Docker installé.
+ */
 class DockerSandboxRunnerTest {
 
     @Test
-    void run_returns_success_for_simple_command() {
-        // Nécessite Docker et l'image sandbox-image.
-        // À exécuter manuellement, pas dans la CI.
-        Path projectDir = Path.of("C:/Users/Lenovo/projet-test");
-        DockerSandboxRunner runner = new DockerSandboxRunner("sandbox-image");
-
-        SandboxResult result = runner.run(
-            projectDir,
-            List.of("ls", "-la", "/projet"),
-            Duration.ofSeconds(30)
-        );
-
-        assertFalse(result.timedOut());
-        assertEquals(0, result.exitCode());
-        assertTrue(result.stdout().contains("README.md"));
-    }
-
-    @Test
-    void run_returns_timeout_when_command_too_long() {
-        Path projectDir = Path.of("C:/Users/Lenovo/projet-test");
-        DockerSandboxRunner runner = new DockerSandboxRunner("sandbox-image");
-
-        SandboxResult result = runner.run(
-            projectDir,
-            List.of("sleep", "60"),
-            Duration.ofSeconds(2)
-        );
-
-        assertTrue(result.timedOut());
-        assertEquals(-1, result.exitCode());
-    }
-
-    @Test
-    void mock_runner_returns_configured_result() {
+    void mock_returns_configured_result() {
         MockSandboxRunner mock = new MockSandboxRunner();
         mock.setNextResult(new SandboxResult(1, "out", "err", false));
 
@@ -58,5 +30,37 @@ class DockerSandboxRunnerTest {
         assertEquals("out", result.stdout());
         assertEquals("err", result.stderr());
         assertEquals(1, mock.getCallCount());
+    }
+
+    @Test
+    void mock_records_last_parameters() {
+        MockSandboxRunner mock = new MockSandboxRunner();
+        Path dir = Path.of("/chemin/test");
+        List<String> cmd = List.of("ls", "-la");
+
+        mock.run(dir, cmd, Duration.ofSeconds(5));
+
+        assertEquals(dir, mock.getLastProjectDir());
+        assertEquals(cmd, mock.getLastCommand());
+        assertEquals(Duration.ofSeconds(5), mock.getLastTimeout());
+    }
+
+    @Test
+    void mock_counts_calls() {
+        MockSandboxRunner mock = new MockSandboxRunner();
+        mock.run(Path.of("/a"), List.of("cmd1"), Duration.ofSeconds(1));
+        mock.run(Path.of("/b"), List.of("cmd2"), Duration.ofSeconds(2));
+        assertEquals(2, mock.getCallCount());
+    }
+
+    @Test
+    void sandbox_result_is_success_when_exit_code_zero_and_not_timed_out() {
+        SandboxResult ok = new SandboxResult(0, "out", "", false);
+        SandboxResult fail = new SandboxResult(1, "", "err", false);
+        SandboxResult timeout = new SandboxResult(-1, "", "", true);
+
+        assertTrue(ok.isSuccess());
+        assertFalse(fail.isSuccess());
+        assertFalse(timeout.isSuccess());
     }
 }
