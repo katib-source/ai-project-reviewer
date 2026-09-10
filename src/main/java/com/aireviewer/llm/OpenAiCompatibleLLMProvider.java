@@ -254,6 +254,10 @@ public abstract class OpenAiCompatibleLLMProvider implements LLMProvider {
      * misconfigured or hostile server can echo a credential back inside its error body, and that
      * body is quoted in {@link #snippet(String)}. Cheap insurance against the one leak path that
      * does not depend on our own code being careful.
+     *
+     * @param text text about to be logged or put in an exception message; may be {@code null}
+     * @return the same text with any configured API key replaced by a redaction marker;
+     *         {@code null} in, {@code null} out
      */
     protected final String redactSecrets(String text) {
         Optional<String> key = apiKey();

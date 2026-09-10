@@ -18,6 +18,7 @@ package com.aireviewer.llm;
  */
 public class LLMException extends Exception {
 
+    /** Serialization id; exceptions cross no wire here, but the compiler asks for it. */
     private static final long serialVersionUID = 1L;
 
     /** What went wrong. Kept coarse — each constant maps to a distinct reaction, not to an API error code. */
