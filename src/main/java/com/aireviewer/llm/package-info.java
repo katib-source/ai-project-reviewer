@@ -28,7 +28,7 @@
  * <pre>{@code
  * public final class LlmCriterionAnalyzer extends AbstractAnalyzer {
  *
- *     private final LLMProvider provider;          // injected: could be mock, Mistral, local
+ *     private final LLMProvider provider;          // injected: mock, Mistral, Groq or local
  *     private final PromptBuilder promptBuilder;   // one instance is enough, it is thread-safe
  *     private final LLMResponseValidator validator;
  *
@@ -76,7 +76,7 @@
  * <pre>{@code
  * // Start from the offline defaults, then apply whatever configuration was read.
  * LLMSettings settings = LLMSettings.defaults()
- *         .withMistral(config.mistralApiKey(), config.mistralModel())  // or .withLocal(url, model)
+ *         .withMistral(config.mistralApiKey(), config.mistralModel())  // or withGroq / withLocal
  *         .withResilience(3, Duration.ofSeconds(2));
  *
  * LLMProvider provider = LLMProviderFactory.create(settings);
@@ -116,7 +116,8 @@
  * <h2>Design patterns in this package</h2>
  * <ul>
  *   <li><b>Adapter</b> — {@link com.aireviewer.llm.LLMProvider} and its implementations:
- *       {@link com.aireviewer.llm.MistralLLMProvider}, {@link com.aireviewer.llm.LocalLmStudioProvider},
+ *       {@link com.aireviewer.llm.MistralLLMProvider}, {@link com.aireviewer.llm.GroqLLMProvider},
+ *       {@link com.aireviewer.llm.LocalLmStudioProvider},
  *       {@link com.aireviewer.llm.MockLLMProvider}, sharing
  *       {@link com.aireviewer.llm.OpenAiCompatibleLLMProvider}.</li>
  *   <li><b>Decorator</b> — {@link com.aireviewer.llm.ResilientLLMProvider} adds retry, timeout

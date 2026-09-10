@@ -59,12 +59,29 @@ class LLMSettingsTest {
     }
 
     @Test
+    @DisplayName("withGroq selects the groq kind and keeps other vendors' credentials")
+    void withGroqSelectsTheKind() {
+        LLMSettings settings = LLMSettings.defaults()
+                .withMistral("sk-mistral-key", "mistral-small-latest")
+                .withGroq("gsk-groq-key", "openai/gpt-oss-20b");
+
+        assertEquals(LLMProviderFactory.KIND_GROQ, settings.kind());
+        assertEquals("gsk-groq-key", settings.groqApiKey());
+        assertEquals("openai/gpt-oss-20b", settings.groqModel());
+        assertEquals("sk-mistral-key", settings.mistralApiKey(),
+                "per-vendor keys mean switching kinds never sends one vendor's key to another");
+    }
+
+    @Test
     @DisplayName("null text values are stored as blank, so no accessor returns null")
     void normalizesNullsToBlank() {
-        LLMSettings settings = LLMSettings.defaults().withMistral(null, null).withLocal(null, null);
+        LLMSettings settings = LLMSettings.defaults()
+                .withMistral(null, null).withGroq(null, null).withLocal(null, null);
 
         assertEquals("", settings.mistralApiKey());
         assertEquals("", settings.mistralModel());
+        assertEquals("", settings.groqApiKey());
+        assertEquals("", settings.groqModel());
         assertEquals("", settings.localBaseUrl());
         assertEquals("", settings.localModel());
     }
@@ -94,6 +111,8 @@ class LLMSettingsTest {
 
         assertFalse(text.contains(secret), text);
         assertTrue(text.contains("<set>"), "but it should still say a key is configured: " + text);
+        String groqText = LLMSettings.defaults().withGroq(secret, null).toString();
+        assertFalse(groqText.contains(secret), groqText);
         assertTrue(LLMSettings.defaults().toString().contains("<absent>"));
     }
 

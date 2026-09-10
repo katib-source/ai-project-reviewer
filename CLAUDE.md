@@ -104,11 +104,13 @@ don't redesign without talking to the owner.
   failure-simulating instance for resilience tests) and a fake in-memory `Sandbox`. This is a hard
   subject requirement, not a preference — a test that needs network or Docker will be rejected in
   review.
-- **One documented exception:** `llm/MistralLiveSmokeCheck` makes a real, paid Mistral call so a
-  human can verify the required genuine LLM call once. It is not named `*Test`, so Surefire never
-  discovers it, and it is gated on `MISTRAL_API_KEY` so it skips rather than fails. Run it by hand
-  (`mvn test -Dtest=MistralLiveSmokeCheck -DfailIfNoTests=false`), never in CI. Do not add a
-  second file like this, and do not rename it to `*Test`.
+- **Two documented exceptions:** `llm/MistralLiveSmokeCheck` and `llm/GroqLiveSmokeCheck` make a
+  real call to their vendor so a human can verify the required genuine LLM call. Neither is named
+  `*Test`, so Surefire never discovers them, and each is gated on its own key
+  (`MISTRAL_API_KEY`, `GROQ_API_KEY`) so it skips rather than fails. Run by hand
+  (`mvn test -Dtest=GroqLiveSmokeCheck -DfailIfNoTests=false`), never in CI. Groq's free tier needs
+  no billing setup, so prefer it for a quick verification. Don't add a third, and don't rename
+  these to `*Test`.
 - Every new `Analyzer`, `LLMProvider` adapter, inclusion rule, consolidator change or report
   builder method needs at least one test before it counts as done.
 - `mvn test` must be green before you push. A red build blocks merging into `main`.
@@ -163,9 +165,12 @@ cd frontend && npm install && npm run dev         # frontend dev server (role 6)
 
 ## 7. Extension recipes (these are literally report questions — they must stay true)
 
-- **New LLM provider:** one new class in `llm/` implementing `LLMProvider` (or extending the
-  shared OpenAI-compatible base when the API shape matches), plus one new branch in the provider
-  factory. Nothing else changes.
+- **New LLM provider:** one new class in `llm/` implementing `LLMProvider` (or extending
+  `OpenAiCompatibleLLMProvider` when the API shape matches), one new branch in `LLMProviderFactory`,
+  and — for a vendor needing its own credentials — a key/model field pair plus a `with*` method on
+  `LLMSettings`. Nothing in `analysis`, `application`, `report` or `web` changes. *Measured, not
+  assumed:* adding Groq cost exactly that — 2 existing classes touched (§7's limit), 1 new adapter,
+  1 new manual live check, and 3 new assertions' worth of test updates.
 - **New deterministic criterion:** one new class in `analysis/analyzers/` extending
   `AbstractAnalyzer`, registered with the engine at startup (composition root). Nothing else
   changes.

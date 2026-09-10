@@ -17,6 +17,10 @@ import org.slf4j.LoggerFactory;
  * eventually forget the resilience wrapper and produce a provider with no safety net, which is the
  * kind of omission nobody notices until the API has an outage mid-demo.
  *
+ * <p>Groq was added as a fourth kind after the rest of this package was finished, as a check on the
+ * extension recipe: it cost one new adapter class, one branch here, and two fields on
+ * {@link LLMSettings} — no change to the engine, the decorator, the validator or the prompt builder.
+ *
  * <p>This factory is therefore the only place in the application that names a concrete provider
  * class, and its product is <b>always</b> wrapped in resilience — including the mock (see
  * {@link #create}). Adding a fourth provider means one new branch here plus one adapter class, and
@@ -51,6 +55,9 @@ public final class LLMProviderFactory {
 
     /** Mistral's hosted API. Requires an API key. */
     public static final String KIND_MISTRAL = "mistral";
+
+    /** Groq's hosted API. Requires an API key, but has a free tier that needs no billing setup. */
+    public static final String KIND_GROQ = "groq";
 
     /** A local OpenAI-compatible server (LM Studio). Requires no API key. */
     public static final String KIND_LOCAL = "local";
@@ -88,10 +95,12 @@ public final class LLMProviderFactory {
         LLMProvider primary = switch (normalizedKind) {
             case KIND_MOCK -> new MockLLMProvider();
             case KIND_MISTRAL -> mistral(settings);
+            case KIND_GROQ -> groq(settings);
             case KIND_LOCAL -> local(settings);
             default -> throw new IllegalArgumentException(
                     "Unknown LLM provider kind '" + settings.kind() + "'. Valid kinds are '"
-                            + KIND_MOCK + "', '" + KIND_MISTRAL + "' and '" + KIND_LOCAL + "'.");
+                            + KIND_MOCK + "', '" + KIND_MISTRAL + "', '" + KIND_GROQ + "' and '"
+                            + KIND_LOCAL + "'.");
         };
 
         LLMProvider resilient = new ResilientLLMProvider(
@@ -133,6 +142,25 @@ public final class LLMProviderFactory {
                             + ". Supply the key (normally the MISTRAL_API_KEY environment variable, "
                             + "never a value committed to the repository), or use kind '" + KIND_MOCK
                             + "' to run entirely offline.",
+                    invalid);
+        }
+    }
+
+    /** Same context-adding treatment as {@link #mistral}, for the same reason. */
+    private static LLMProvider groq(LLMSettings settings) {
+        try {
+            return new GroqLLMProvider(
+                    GroqLLMProvider.DEFAULT_BASE_URL,
+                    orDefault(settings.groqModel(), GroqLLMProvider.DEFAULT_MODEL),
+                    settings.groqApiKey(),
+                    settings.providerTimeout().orElse(GroqLLMProvider.DEFAULT_TIMEOUT));
+        } catch (IllegalArgumentException invalid) {
+            throw new IllegalArgumentException(
+                    "LLM provider kind '" + KIND_GROQ + "' is not usable: " + invalid.getMessage()
+                            + ". Supply the key (normally the GROQ_API_KEY environment variable, "
+                            + "never a value committed to the repository) - Groq's free tier needs "
+                            + "no billing setup - or use kind '" + KIND_MOCK + "' to run entirely "
+                            + "offline.",
                     invalid);
         }
     }
