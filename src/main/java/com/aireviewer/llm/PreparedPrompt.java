@@ -20,6 +20,7 @@ import java.util.Objects;
  */
 public record PreparedPrompt(LLMRequest request, List<String> injectionSignals, boolean contentTruncated) {
 
+    /** Defensively copies the signal list so a prepared prompt cannot be altered after the fact. */
     public PreparedPrompt {
         Objects.requireNonNull(request, "request");
         injectionSignals = List.copyOf(injectionSignals);
