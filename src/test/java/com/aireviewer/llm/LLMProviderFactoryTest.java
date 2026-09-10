@@ -17,10 +17,13 @@ class LLMProviderFactoryTest {
 
     private static final Duration NO_DELAY = Duration.ZERO;
 
-    private static LLMProvider create(String kind, String mistralKey, String mistralModel,
-            String localBaseUrl, String localModel) {
-        return LLMProviderFactory.create(
-                kind, mistralKey, mistralModel, localBaseUrl, localModel, 1, NO_DELAY);
+    /** One attempt and no delay keeps the failure paths fast. */
+    private static LLMSettings settings() {
+        return LLMSettings.defaults().withResilience(1, NO_DELAY);
+    }
+
+    private static LLMProvider create(LLMSettings settings) {
+        return LLMProviderFactory.create(settings);
     }
 
     private static LLMRequest request() {
@@ -40,7 +43,7 @@ class LLMProviderFactoryTest {
     @Test
     @DisplayName("kind 'mock' builds the offline provider")
     void buildsMock() {
-        LLMProvider provider = create(LLMProviderFactory.KIND_MOCK, null, null, null, null);
+        LLMProvider provider = create(settings());
 
         assertEquals("mock", provider.describe());
     }
@@ -49,7 +52,7 @@ class LLMProviderFactoryTest {
     @DisplayName("kind 'mistral' builds the Mistral adapter, named through the wrapper")
     void buildsMistral() {
         LLMProvider provider =
-                create(LLMProviderFactory.KIND_MISTRAL, "sk-test-key", "mistral-large-latest", null, null);
+                create(settings().withMistral("sk-test-key", "mistral-large-latest"));
 
         // describe() delegates through ResilientLLMProvider, so this also re-checks that wiring.
         assertEquals("mistral:mistral-large-latest", provider.describe());
@@ -58,8 +61,7 @@ class LLMProviderFactoryTest {
     @Test
     @DisplayName("kind 'local' builds the LM Studio adapter")
     void buildsLocal() {
-        LLMProvider provider = create(
-                LLMProviderFactory.KIND_LOCAL, null, null, "http://127.0.0.1:9999/v1", "qwen-coder");
+        LLMProvider provider = create(settings().withLocal("http://127.0.0.1:9999/v1", "qwen-coder"));
 
         assertEquals("lmstudio:qwen-coder", provider.describe());
     }
@@ -68,24 +70,24 @@ class LLMProviderFactoryTest {
     @DisplayName("blank model names and URLs fall back to the provider defaults")
     void appliesProviderDefaults() {
         assertEquals("mistral:" + MistralLLMProvider.DEFAULT_MODEL,
-                create(LLMProviderFactory.KIND_MISTRAL, "sk-test-key", "  ", null, null).describe());
+                create(settings().withMistral("sk-test-key", "  ")).describe());
         assertEquals("lmstudio:" + LocalLmStudioProvider.DEFAULT_MODEL,
-                create(LLMProviderFactory.KIND_LOCAL, null, null, null, null).describe());
+                create(settings().withKind(LLMProviderFactory.KIND_LOCAL)).describe());
     }
 
     @Test
     @DisplayName("the kind string is case- and whitespace-insensitive")
     void normalizesTheKind() {
-        assertEquals("mock", create("  MOCK ", null, null, null, null).describe());
+        assertEquals("mock", create(settings().withKind("  MOCK ")).describe());
         assertEquals("mistral:" + MistralLLMProvider.DEFAULT_MODEL,
-                create("Mistral", "sk-test-key", null, null, null).describe());
+                create(settings().withMistral("sk-test-key", null).withKind("Mistral")).describe());
     }
 
     @Test
     @DisplayName("an unknown kind fails fast, listing the valid kinds")
     void rejectsUnknownKind() {
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-                () -> create("gpt-4", "sk-test-key", null, null, null));
+                () -> create(settings().withKind("gpt-4")));
 
         assertTrue(failure.getMessage().contains("gpt-4"), failure.getMessage());
         assertTrue(failure.getMessage().contains(LLMProviderFactory.KIND_MOCK));
@@ -98,7 +100,7 @@ class LLMProviderFactoryTest {
     void rejectsMissingMistralKeyWithAClearMessage() {
         for (String noKey : new String[] {null, "", "   "}) {
             IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-                    () -> create(LLMProviderFactory.KIND_MISTRAL, noKey, null, null, null),
+                    () -> create(settings().withMistral(noKey, null)),
                     "key was: " + noKey);
 
             String message = failure.getMessage();
@@ -113,36 +115,34 @@ class LLMProviderFactoryTest {
     }
 
     @Test
-    @DisplayName("a null kind is rejected")
+    @DisplayName("a null kind is rejected by the settings record")
     void rejectsNullKind() {
-        assertThrows(NullPointerException.class, () -> create(null, null, null, null, null));
+        assertThrows(NullPointerException.class, () -> create(settings().withKind(null)));
     }
 
     @Test
-    @DisplayName("bad resilience settings are rejected by the decorator's own validation")
+    @DisplayName("bad resilience settings are rejected when the settings are built, even earlier")
     void rejectsBadResilienceSettings() {
-        assertThrows(IllegalArgumentException.class, () -> LLMProviderFactory.create(
-                LLMProviderFactory.KIND_MOCK, null, null, null, null, 0, NO_DELAY));
-        assertThrows(IllegalArgumentException.class, () -> LLMProviderFactory.create(
-                LLMProviderFactory.KIND_MOCK, null, null, null, null, 3, Duration.ofMillis(-1)));
+        assertThrows(IllegalArgumentException.class, () -> settings().withResilience(0, NO_DELAY));
+        assertThrows(IllegalArgumentException.class, () -> settings().withResilience(3, Duration.ofMillis(-1)));
     }
 
     @Test
     @DisplayName("every product is wrapped in resilience, including the mock")
     void alwaysWrapsInResilience() {
         assertInstanceOf(ResilientLLMProvider.class,
-                create(LLMProviderFactory.KIND_MOCK, null, null, null, null));
+                create(settings()));
         assertInstanceOf(ResilientLLMProvider.class,
-                create(LLMProviderFactory.KIND_MISTRAL, "sk-test-key", null, null, null));
+                create(settings().withMistral("sk-test-key", null)));
         assertInstanceOf(ResilientLLMProvider.class,
-                create(LLMProviderFactory.KIND_LOCAL, null, null, null, null));
+                create(settings().withKind(LLMProviderFactory.KIND_LOCAL)));
     }
 
     @Test
     @DisplayName("a dead local server falls back to a usable mock answer instead of failing")
     void resilienceIsRealNotDecorative() throws Exception {
         LLMProvider provider =
-                create(LLMProviderFactory.KIND_LOCAL, null, null, closedLocalPortUrl(), "local-model");
+                create(settings().withLocal(closedLocalPortUrl(), "local-model"));
 
         LLMResponse response = provider.complete(request());
 
@@ -152,14 +152,15 @@ class LLMProviderFactoryTest {
         LLMEvaluation evaluation = new LLMResponseValidator().validate(response);
         assertEquals("coupling", evaluation.criterion().orElseThrow());
         assertEquals(14.0, evaluation.score());
+        assertTrue(evaluation.fromFallback(),
+                "a placeholder score must arrive labelled as one, all the way to the consumer");
     }
 
     @Test
     @DisplayName("the documented three-step usage works end to end with the factory's product")
     void handoffExampleWorks() throws LLMException {
         // Exactly the sequence package-info.java tells a teammate to write.
-        LLMProvider provider = LLMProviderFactory.create(
-                LLMProviderFactory.KIND_MOCK, null, null, null, null, 3, NO_DELAY);
+        LLMProvider provider = LLMProviderFactory.create(LLMSettings.defaults());
         PromptBuilder promptBuilder = new PromptBuilder();
         LLMResponseValidator validator = new LLMResponseValidator();
 
@@ -173,6 +174,6 @@ class LLMProviderFactoryTest {
         assertTrue(evaluation.score() >= 0);
         assertEquals(20.0, evaluation.maxScore().orElse(criterion.maxScore()));
         assertFalse(prepared.hasInjectionSignals());
-        assertFalse(response.fromFallback());
+        assertFalse(evaluation.fromFallback(), "the mock answered as the primary, not as a fallback");
     }
 }

@@ -24,6 +24,12 @@ import java.util.OptionalDouble;
  * @param strengths       what the project does well; empty if the model gave none
  * @param weaknesses      what the project does badly; empty if the model gave none
  * @param recommendations suggested improvements; empty if the model gave none
+ * @param fromFallback    {@code true} if a fallback provider produced this evaluation because the
+ *                        configured one failed. Carried here, and not left behind on
+ *                        {@link LLMResponse}, because this record is what travels onward: a caller
+ *                        that only ever sees the validated evaluation would otherwise have no way
+ *                        to know the result is degraded, and a report that cannot tell a real
+ *                        evaluation from a placeholder is worse than one that admits the gap
  */
 public record LLMEvaluation(
         Optional<String> criterion,
@@ -31,7 +37,8 @@ public record LLMEvaluation(
         OptionalDouble maxScore,
         List<String> strengths,
         List<String> weaknesses,
-        List<String> recommendations) {
+        List<String> recommendations,
+        boolean fromFallback) {
 
     /** Defensively copies the lists so a validated evaluation cannot be mutated after the fact. */
     public LLMEvaluation {

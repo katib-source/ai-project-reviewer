@@ -44,6 +44,7 @@ class LLMResponseValidatorTest {
         assertEquals(List.of("clear packages", "interfaces at the boundaries"), evaluation.strengths());
         assertEquals(List.of("one oversized class"), evaluation.weaknesses());
         assertEquals(List.of("split the oversized class"), evaluation.recommendations());
+        assertFalse(evaluation.fromFallback(), "this answer came from the primary provider");
     }
 
     @Test
@@ -171,6 +172,18 @@ class LLMResponseValidatorTest {
         assertFalse(evaluation.strengths().isEmpty());
         assertFalse(evaluation.weaknesses().isEmpty());
         assertFalse(evaluation.recommendations().isEmpty());
+    }
+
+    @Test
+    @DisplayName("the fallback flag is carried from the response onto the evaluation")
+    void carriesFallbackFlag() throws LLMException {
+        LLMResponse primaryAnswer = new LLMResponse("{\"score\": 11}", "primary-model", false);
+        LLMResponse fallbackAnswer = new LLMResponse("{\"score\": 11}", "mock", true);
+
+        assertFalse(validator.validate(primaryAnswer).fromFallback());
+        assertTrue(validator.validate(fallbackAnswer).fromFallback(),
+                "a degraded result must stay identifiable after validation, or the report cannot "
+                        + "tell a placeholder from a judgement");
     }
 
     @Test

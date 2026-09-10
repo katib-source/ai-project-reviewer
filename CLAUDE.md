@@ -24,8 +24,13 @@ web (React, via HTTP)  →  application (Facade)  →  { project, analysis, llm,
 Three boundaries are absolute — **never** cross them, even "just this once":
 
 1. `com.aireviewer.analysis` never imports Docker, HTTP, Javalin, Swing or any UI type, and
-   depends on `llm` **only** through the `LLMProvider` / `LLMException` interfaces handed to it by
-   **constructor injection** — never by calling a factory, a static, or a concrete provider itself.
+   depends on `llm` **only** through that package's public API — `LLMProvider`, `LLMRequest`,
+   `LLMResponse`, `LLMEvaluation`, `LLMException`, `PromptBuilder`, `PromptCriterion`,
+   `PreparedPrompt`, `LLMResponseValidator`, `LLMProviderFactory`, `LLMSettings` — with the provider handed to it
+   by **constructor injection**. Never a concrete provider (`MistralLLMProvider`,
+   `LocalLmStudioProvider`, `MockLLMProvider` outside tests), never
+   `OpenAiCompatibleLLMProvider`, never a vendor or HTTP type. `analysis` does not call the factory
+   either: the composition root does that and injects the result.
 2. `com.aireviewer.llm` never imports any UI / HTTP / web type of ours (an HTTP *client* for
    talking to a vendor API is fine — that is what the package is for).
 3. `web` (and any future UI) never calls `project`, `analysis`, `llm`, `security`, `report` or
