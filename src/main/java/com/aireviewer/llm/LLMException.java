@@ -23,17 +23,44 @@ public class LLMException extends Exception {
     /** What went wrong. Kept coarse — each constant maps to a distinct reaction, not to an API error code. */
     public enum Kind {
         /** The provider did not answer within the allotted time. Retryable. */
-        TIMEOUT,
-        /** The provider answered with an error status (auth, quota, bad request, server error). */
-        HTTP_ERROR,
+        TIMEOUT(true),
+        /**
+         * The provider answered with an error status (auth, quota, bad request, server error).
+         *
+         * <p>Not retryable: at this granularity the kind cannot tell a 401 from a 503, and retrying
+         * a rejected key just burns the quota. An adapter that can distinguish them should map the
+         * transient statuses (429, 5xx) to {@link #UNAVAILABLE} instead.
+         */
+        HTTP_ERROR(false),
         /** The provider could not be reached at all: DNS, connection refused, service down. Retryable. */
-        UNAVAILABLE,
+        UNAVAILABLE(true),
         /** A well-formed exchange that carried no usable text — no choices, or blank content. */
-        EMPTY_RESPONSE,
+        EMPTY_RESPONSE(false),
         /** Text came back, but it is not the shape it claimed to be — e.g. unparseable JSON. */
-        MALFORMED_RESPONSE,
+        MALFORMED_RESPONSE(false),
         /** Parseable content that violates the contract: missing required fields, score out of range. */
-        SCHEMA_VALIDATION
+        SCHEMA_VALIDATION(false);
+
+        private final boolean retryable;
+
+        Kind(boolean retryable) {
+            this.retryable = retryable;
+        }
+
+        /**
+         * Whether sending the very same request again could plausibly succeed.
+         *
+         * <p>The knowledge lives here, on the failure kind, rather than in whatever code happens to
+         * be retrying: a timeout is worth another go no matter who catches it, and a model that
+         * answered with the wrong schema will answer with the wrong schema again. Keeping the
+         * decision in one place means the resilience layer cannot disagree with the documentation
+         * on these constants, and a new kind declares its own retry policy as it is added.
+         *
+         * @return {@code true} if a retry is worth attempting
+         */
+        public boolean isRetryable() {
+            return retryable;
+        }
     }
 
     private final Kind kind;
