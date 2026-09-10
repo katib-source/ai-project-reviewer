@@ -59,6 +59,26 @@ class LLMProviderFactoryTest {
     }
 
     @Test
+    @DisplayName("kind 'groq' builds the Groq adapter, named through the wrapper")
+    void buildsGroq() {
+        LLMProvider provider = create(settings().withGroq("gsk-test-key", "openai/gpt-oss-120b"));
+
+        assertEquals("groq:openai/gpt-oss-120b", provider.describe());
+    }
+
+    @Test
+    @DisplayName("a missing Groq key gives an actionable message too")
+    void rejectsMissingGroqKey() {
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> create(settings().withGroq(null, null)));
+
+        String message = failure.getMessage();
+        assertTrue(message.contains("groq"), message);
+        assertTrue(message.contains("GROQ_API_KEY"), message);
+        assertTrue(message.contains(LLMProviderFactory.KIND_MOCK), message);
+    }
+
+    @Test
     @DisplayName("kind 'local' builds the LM Studio adapter")
     void buildsLocal() {
         LLMProvider provider = create(settings().withLocal("http://127.0.0.1:9999/v1", "qwen-coder"));
@@ -73,6 +93,8 @@ class LLMProviderFactoryTest {
                 create(settings().withMistral("sk-test-key", "  ")).describe());
         assertEquals("lmstudio:" + LocalLmStudioProvider.DEFAULT_MODEL,
                 create(settings().withKind(LLMProviderFactory.KIND_LOCAL)).describe());
+        assertEquals("groq:" + GroqLLMProvider.DEFAULT_MODEL,
+                create(settings().withGroq("gsk-test-key", null)).describe());
     }
 
     @Test
@@ -92,6 +114,7 @@ class LLMProviderFactoryTest {
         assertTrue(failure.getMessage().contains("gpt-4"), failure.getMessage());
         assertTrue(failure.getMessage().contains(LLMProviderFactory.KIND_MOCK));
         assertTrue(failure.getMessage().contains(LLMProviderFactory.KIND_MISTRAL));
+        assertTrue(failure.getMessage().contains(LLMProviderFactory.KIND_GROQ));
         assertTrue(failure.getMessage().contains(LLMProviderFactory.KIND_LOCAL));
     }
 
@@ -136,6 +159,8 @@ class LLMProviderFactoryTest {
                 create(settings().withMistral("sk-test-key", null)));
         assertInstanceOf(ResilientLLMProvider.class,
                 create(settings().withKind(LLMProviderFactory.KIND_LOCAL)));
+        assertInstanceOf(ResilientLLMProvider.class,
+                create(settings().withGroq("gsk-test-key", null)));
     }
 
     @Test

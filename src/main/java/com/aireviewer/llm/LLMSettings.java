@@ -21,17 +21,27 @@ import java.util.Optional;
  * runtime. Naming each value at the call site removes that class of mistake, and adding a knob no
  * longer changes a signature every caller has to follow.
  *
+ * <p>Credentials are per-vendor fields ({@code mistralApiKey}, {@code groqApiKey}) rather than one
+ * shared {@code apiKey}, so switching kinds does not silently send one vendor's key to another and
+ * a caller can keep both configured. That said, this is the shape's limit: a fourth hosted vendor
+ * would make a fifth and sixth field, and the better answer then is one
+ * {@code Map<String, VendorCredentials>} keyed by kind. Two vendors do not justify that machinery
+ * yet.
+ *
  * <p>Start from {@link #defaults()} and adjust with the {@code with*} methods — these are plain
  * copy-with-one-change helpers, not a Builder pattern; the record is small enough that a builder
  * class would be ceremony. All values are validated on construction, so an unusable configuration
  * fails at startup rather than on the first evaluation.
  *
  * @param kind            which provider to build: {@link LLMProviderFactory#KIND_MOCK},
- *                        {@link LLMProviderFactory#KIND_MISTRAL} or
+ *                        {@link LLMProviderFactory#KIND_MISTRAL},
+ *                        {@link LLMProviderFactory#KIND_GROQ} or
  *                        {@link LLMProviderFactory#KIND_LOCAL}
  * @param mistralApiKey   Mistral API key; required only for the {@code mistral} kind. Blank means
  *                        absent, so an unset environment variable behaves like no key at all
  * @param mistralModel    Mistral model name; blank uses {@link MistralLLMProvider#DEFAULT_MODEL}
+ * @param groqApiKey      Groq API key; required only for the {@code groq} kind. Blank means absent
+ * @param groqModel       Groq model name; blank uses {@link GroqLLMProvider#DEFAULT_MODEL}
  * @param localBaseUrl    local server root; blank uses {@link LocalLmStudioProvider#DEFAULT_BASE_URL}
  * @param localModel      local model name; blank uses {@link LocalLmStudioProvider#DEFAULT_MODEL}
  * @param maxAttempts     attempts against the chosen provider before falling back; at least 1
@@ -47,6 +57,8 @@ public record LLMSettings(
         String kind,
         String mistralApiKey,
         String mistralModel,
+        String groqApiKey,
+        String groqModel,
         String localBaseUrl,
         String localModel,
         int maxAttempts,
@@ -83,6 +95,8 @@ public record LLMSettings(
         // and no accessor here ever returns null.
         mistralApiKey = blankIfNull(mistralApiKey);
         mistralModel = blankIfNull(mistralModel);
+        groqApiKey = blankIfNull(groqApiKey);
+        groqModel = blankIfNull(groqModel);
         localBaseUrl = blankIfNull(localBaseUrl);
         localModel = blankIfNull(localModel);
 
@@ -122,7 +136,7 @@ public record LLMSettings(
      */
     public static LLMSettings defaults() {
         return new LLMSettings(
-                DEFAULT_KIND, "", "", "", "",
+                DEFAULT_KIND, "", "", "", "", "", "",
                 DEFAULT_MAX_ATTEMPTS, DEFAULT_RETRY_DELAY,
                 DEFAULT_TEMPERATURE, DEFAULT_MAX_OUTPUT_TOKENS,
                 Optional.empty());
@@ -133,7 +147,7 @@ public record LLMSettings(
      * @return a copy with that kind
      */
     public LLMSettings withKind(String newKind) {
-        return new LLMSettings(newKind, mistralApiKey, mistralModel, localBaseUrl, localModel,
+        return new LLMSettings(newKind, mistralApiKey, mistralModel, groqApiKey, groqModel, localBaseUrl, localModel,
                 maxAttempts, retryDelay, temperature, maxOutputTokens, providerTimeout);
     }
 
@@ -146,7 +160,21 @@ public record LLMSettings(
      * @return a copy configured for Mistral
      */
     public LLMSettings withMistral(String apiKey, String model) {
-        return new LLMSettings(LLMProviderFactory.KIND_MISTRAL, apiKey, model, localBaseUrl, localModel,
+        return new LLMSettings(LLMProviderFactory.KIND_MISTRAL, apiKey, model, groqApiKey, groqModel,
+                localBaseUrl, localModel,
+                maxAttempts, retryDelay, temperature, maxOutputTokens, providerTimeout);
+    }
+
+    /**
+     * Selects the Groq kind and its credentials, the same way {@link #withMistral} does.
+     *
+     * @param apiKey Groq API key
+     * @param model  model name, or blank/{@code null} for the provider default
+     * @return a copy configured for Groq
+     */
+    public LLMSettings withGroq(String apiKey, String model) {
+        return new LLMSettings(LLMProviderFactory.KIND_GROQ, mistralApiKey, mistralModel, apiKey, model,
+                localBaseUrl, localModel,
                 maxAttempts, retryDelay, temperature, maxOutputTokens, providerTimeout);
     }
 
@@ -158,7 +186,8 @@ public record LLMSettings(
      * @return a copy configured for a local server
      */
     public LLMSettings withLocal(String baseUrl, String model) {
-        return new LLMSettings(LLMProviderFactory.KIND_LOCAL, mistralApiKey, mistralModel, baseUrl, model,
+        return new LLMSettings(LLMProviderFactory.KIND_LOCAL, mistralApiKey, mistralModel, groqApiKey, groqModel,
+                baseUrl, model,
                 maxAttempts, retryDelay, temperature, maxOutputTokens, providerTimeout);
     }
 
@@ -168,7 +197,7 @@ public record LLMSettings(
      * @return a copy with those resilience settings
      */
     public LLMSettings withResilience(int newMaxAttempts, Duration newRetryDelay) {
-        return new LLMSettings(kind, mistralApiKey, mistralModel, localBaseUrl, localModel,
+        return new LLMSettings(kind, mistralApiKey, mistralModel, groqApiKey, groqModel, localBaseUrl, localModel,
                 newMaxAttempts, newRetryDelay, temperature, maxOutputTokens, providerTimeout);
     }
 
@@ -178,7 +207,7 @@ public record LLMSettings(
      * @return a copy with those sampling settings
      */
     public LLMSettings withSampling(double newTemperature, int newMaxOutputTokens) {
-        return new LLMSettings(kind, mistralApiKey, mistralModel, localBaseUrl, localModel,
+        return new LLMSettings(kind, mistralApiKey, mistralModel, groqApiKey, groqModel, localBaseUrl, localModel,
                 maxAttempts, retryDelay, newTemperature, newMaxOutputTokens, providerTimeout);
     }
 
@@ -187,7 +216,7 @@ public record LLMSettings(
      * @return a copy with that timeout
      */
     public LLMSettings withProviderTimeout(Duration timeout) {
-        return new LLMSettings(kind, mistralApiKey, mistralModel, localBaseUrl, localModel,
+        return new LLMSettings(kind, mistralApiKey, mistralModel, groqApiKey, groqModel, localBaseUrl, localModel,
                 maxAttempts, retryDelay, temperature, maxOutputTokens,
                 Optional.of(Objects.requireNonNull(timeout, "timeout")));
     }
@@ -203,6 +232,8 @@ public record LLMSettings(
         return "LLMSettings[kind=" + kind
                 + ", mistralApiKey=" + (mistralApiKey.isBlank() ? "<absent>" : "<set>")
                 + ", mistralModel=" + mistralModel
+                + ", groqApiKey=" + (groqApiKey.isBlank() ? "<absent>" : "<set>")
+                + ", groqModel=" + groqModel
                 + ", localBaseUrl=" + localBaseUrl
                 + ", localModel=" + localModel
                 + ", maxAttempts=" + maxAttempts
