@@ -49,6 +49,13 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
  * model's actual answer and judge whether it is sensible. ({@code System.out} is fine here; the
  * CLAUDE.md §2 ban on printing applies to {@code src/main}.)
  *
+ * <h2>Last verified</h2>
+ * 2026-09-11, model {@code openai/gpt-oss-20b}: HTTP 200, unfenced JSON matching the schema
+ * exactly, criterion echoed, {@code fromFallback=false}, 1569 ms round trip, score 3/20 on the
+ * sample below with 8 accurate weaknesses. Evidence that the required genuine LLM call works end to
+ * end — factory, prompt builder, HTTP adapter and validator — and the only log line emitted carried
+ * no credential.
+ *
  * <h2>What it asserts</h2>
  * Structure only — that a real answer came back, parsed, with a score inside the criterion's scale.
  * Never a particular score: a real model is not deterministic, and a check that demanded 14/20
