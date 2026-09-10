@@ -104,6 +104,11 @@ don't redesign without talking to the owner.
   failure-simulating instance for resilience tests) and a fake in-memory `Sandbox`. This is a hard
   subject requirement, not a preference — a test that needs network or Docker will be rejected in
   review.
+- **One documented exception:** `llm/MistralLiveSmokeCheck` makes a real, paid Mistral call so a
+  human can verify the required genuine LLM call once. It is not named `*Test`, so Surefire never
+  discovers it, and it is gated on `MISTRAL_API_KEY` so it skips rather than fails. Run it by hand
+  (`mvn test -Dtest=MistralLiveSmokeCheck -DfailIfNoTests=false`), never in CI. Do not add a
+  second file like this, and do not rename it to `*Test`.
 - Every new `Analyzer`, `LLMProvider` adapter, inclusion rule, consolidator change or report
   builder method needs at least one test before it counts as done.
 - `mvn test` must be green before you push. A red build blocks merging into `main`.
