@@ -55,7 +55,7 @@ assistants can see what is safe to build on.
 | `com.aireviewer.persistence` | role 1 | TODO | JSON history of past analyses |
 | `com.aireviewer.analysis` | role 2 | TODO | `Analyzer` (Strategy), `AbstractAnalyzer` (Template Method), `AnalysisEngine` (registry + runner + consolidator), `AnalysisListener` (Observer) |
 | `com.aireviewer.analysis.analyzers` | role 2 | TODO | 2 deterministic analyzers + the LLM-backed analyzer bridge |
-| `com.aireviewer.llm` | role 3 | DONE | `LLMProvider` (Adapter) + Mock/Mistral/LM-Studio adapters, Factory, `ResilientLLMProvider` (Decorator), prompt building, JSON response validation |
+| `com.aireviewer.llm` | role 3 | DONE | `LLMProvider` (Adapter) + Mock/Mistral/Groq/LM-Studio adapters, Factory, `ResilientLLMProvider` (Decorator), prompt building with injection defense, JSON response validation |
 | `com.aireviewer.security` | role 4 | TODO | `Sandbox` + `DockerSandbox` (least-privilege `docker run`), owns `sandbox/Dockerfile` |
 | `com.aireviewer.report` | role 5 | TODO | LaTeX escaping, `LatexReportBuilder` (Builder), optional `pdflatex` compilation |
 | `com.aireviewer.application` | role 5 | TODO | `ReviewService` Facade + `Main` composition root |

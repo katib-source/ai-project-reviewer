@@ -4,7 +4,7 @@
  * validation of what comes back.
  *
  * <h2>What a caller outside this package needs to know</h2>
- * Five types, and nothing else:
+ * Five entry points, and nothing else:
  * <ul>
  *   <li>{@link com.aireviewer.llm.LLMProviderFactory} with
  *       {@link com.aireviewer.llm.LLMSettings} — builds a provider from configuration values.

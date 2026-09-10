@@ -64,9 +64,9 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
  * <p>One assertion is worth its own note: {@link LLMEvaluation#fromFallback()} must be
  * {@code false}. The factory wraps every provider with a mock fallback, so a smoke check that
  * ignored this flag would <em>pass on a rejected API key</em> — the mock would quietly answer
- * instead, and the run would look like a successful conversation with Mistral. Resilience is
- * therefore also set to a single attempt: this check should fail fast and loudly, not retry against
- * a paid endpoint.
+ * instead, and the run would look like a successful conversation with Groq. Resilience is therefore
+ * also set to a single attempt: this check should fail fast and loudly, not spend free-tier quota on
+ * retries.
  */
 @EnabledIfEnvironmentVariable(named = "GROQ_API_KEY", matches = ".+")
 class GroqLiveSmokeCheck {
