@@ -23,8 +23,8 @@ import java.util.Optional;
  *
  * <p>Credentials are per-vendor fields ({@code mistralApiKey}, {@code groqApiKey}) rather than one
  * shared {@code apiKey}, so switching kinds does not silently send one vendor's key to another and
- * a caller can keep both configured. That said, this is the shape's limit: a fourth hosted vendor
- * would make a fifth and sixth field, and the better answer then is one
+ * a caller can keep both configured. That said, this is the shape's limit: a third hosted vendor
+ * would make a fifth and sixth credential field, and the better answer then is one
  * {@code Map<String, VendorCredentials>} keyed by kind. Two vendors do not justify that machinery
  * yet.
  *

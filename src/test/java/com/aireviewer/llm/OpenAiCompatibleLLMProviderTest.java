@@ -9,7 +9,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
@@ -312,7 +311,7 @@ class OpenAiCompatibleLLMProviderTest {
         // actual guarantee is structural — every log call in this package passes only a criterion
         // id, describe(), a status, a kind, an endpoint, a model or a timeout, and the one
         // body-derived string goes through redactSecrets. This test additionally catches a stray
-        // System.out.println added while debugging.
+        // stray debug printing added while chasing a bug.
         assertFalse(captured.toString(StandardCharsets.UTF_8).contains(API_KEY));
     }
 
