@@ -232,6 +232,11 @@ export JAVA_HOME=$(/usr/libexec/java_home -v 21)
 `error: invalid target release: 21` means Maven is running on a JDK older than 21 — fix
 `JAVA_HOME`, don't lower `maven.compiler.release` in `pom.xml`.
 
+`error: release version 21 not supported` (or `No compiler is provided in this environment`) with a
+Java **25** on `PATH` means you have a **JRE, not a JDK**: `java` runs, `javac` is missing, and
+`--release` has no `lib/ct.sym` to compile against. Check with `command -v javac`, then install the
+full JDK — the `-devel` / `-jdk` package, not `-headless` (see §2).
+
 ### Docker not running
 
 `Cannot connect to the Docker daemon` / `error during connect`:
