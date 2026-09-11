@@ -33,9 +33,9 @@ out/
 # ignored globally so the subject PDF and the final technical report can be committed.
 
 # ---- Frontend (role 6) ----
-frontend/node_modules/
-frontend/dist/
-frontend/.vite/
+front/node_modules/
+front/dist/
+front/.vite/
 npm-debug.log*
 yarn-error.log*
 pnpm-debug.log*

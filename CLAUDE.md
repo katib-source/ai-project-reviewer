@@ -10,8 +10,8 @@ Read that once. Setup and daily workflow are in
 [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md). **This file is the enforceable subset: what
 code in this repo must and must not do.**
 
-Current repo state: **scaffold only** — build, docs, package directories and the sandbox image.
-No business logic exists yet; each role writes its own package (§1).
+Current repo state: **fully built** — every package in §1 has a working, tested implementation.
+Extend or refine existing code; don't redesign without talking to the owner (§1).
 
 ## 0. Non-negotiable architecture rule
 
@@ -44,23 +44,23 @@ packages without updating this file and `docs/TEAM_BRIEF.md` first.
 
 ## 1. Package layout (current status)
 
-Everything is `TODO` — the directories exist, the code does not. Update your row (`TODO` →
-`IN PROGRESS` → `DONE`) in the same PR that lands the code, so the rest of the team and their
+Every package below is `DONE` — a working, tested implementation exists for all of them. Update
+your row if you meaningfully change a package's scope, so the rest of the team and their
 assistants can see what is safe to build on.
 
 | Package | Owner | Status | Responsibility |
 |---|---|---|---|
-| `com.aireviewer.project` | role 1 | TODO | Directory import, Composite file tree, file classification, include/exclude rules |
-| `com.aireviewer.configuration` | role 1 | TODO | Env-first settings (API keys, limits, paths) — zero secrets in code |
-| `com.aireviewer.persistence` | role 1 | TODO | JSON history of past analyses |
-| `com.aireviewer.analysis` | role 2 | TODO | `Analyzer` (Strategy), `AbstractAnalyzer` (Template Method), `AnalysisEngine` (registry + runner + consolidator), `AnalysisListener` (Observer) |
-| `com.aireviewer.analysis.analyzers` | role 2 | TODO | 2 deterministic analyzers + the LLM-backed analyzer bridge |
+| `com.aireviewer.project` | role 1 | DONE | Directory import, Composite file tree, file classification, include/exclude rules |
+| `com.aireviewer.configuration` | role 1 | DONE | Env-first settings (API keys, limits, paths) — zero secrets in code |
+| `com.aireviewer.persistence` | role 1 | DONE | JSON history of past analyses |
+| `com.aireviewer.analysis` | role 2 | DONE | `Analyzer` (Strategy), `AbstractAnalyzer` (Template Method), `AnalysisEngine` (registry + runner + consolidator), `AnalysisListener` (Observer) |
+| `com.aireviewer.analysis.analyzers` | role 2 | DONE | 2 deterministic analyzers + the LLM-backed analyzer bridge |
 | `com.aireviewer.llm` | role 3 | DONE | `LLMProvider` (Adapter) + Mock/Mistral/Groq/LM-Studio adapters, Factory, `ResilientLLMProvider` (Decorator), prompt building with injection defense, JSON response validation |
-| `com.aireviewer.security` | role 4 | TODO | `Sandbox` + `DockerSandbox` (least-privilege `docker run`), owns `sandbox/Dockerfile` |
-| `com.aireviewer.report` | role 5 | TODO | LaTeX escaping, `LatexReportBuilder` (Builder), optional `pdflatex` compilation |
-| `com.aireviewer.application` | role 5 | TODO | `ReviewService` Facade + `Main` composition root |
-| `com.aireviewer.web` | role 5 | TODO | Javalin REST + SSE controllers and DTOs, binds to localhost only |
-| `frontend/` (not Java) | role 6 | TODO | React + Vite app — lives in `frontend/`, never under `src/main/java` |
+| `com.aireviewer.security` | role 4 | DONE | `Sandbox` + `DockerSandbox` (least-privilege `docker run`), owns `sandbox/Dockerfile` |
+| `com.aireviewer.report` | role 5 | DONE | LaTeX escaping, `LatexReportBuilder` (Builder), optional `pdflatex` compilation |
+| `com.aireviewer.application` | role 5 | DONE | `ReviewService` Facade + `Main` composition root |
+| `com.aireviewer.web` | role 5 | DONE | Javalin REST + SSE controllers and DTOs, binds to localhost only |
+| `frontend/` (not Java) | role 6 | DONE | React + Vite app — lives in `frontend/`, never under `src/main/java` |
 
 `DONE` means the interfaces and a working, tested implementation exist — extend or refine them,
 don't redesign without talking to the owner.
