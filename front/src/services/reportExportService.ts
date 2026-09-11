@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf'
+import { API_BASE_URL } from './apiEndpoints'
 
 function getLatexValue(latex: string, command: string) {
   return latex.match(new RegExp(`\\\\${command}\\{([^}]*)\\}`))?.[1]
@@ -42,4 +43,19 @@ export function downloadPdfFromLatex(latex: string, fileName: string) {
   }
 
   pdf.save(`${fileName}.pdf`)
+}
+
+export async function downloadRemoteReport(path: string, fileName: string) {
+  const response = await fetch(`${API_BASE_URL}${path}`)
+  if (!response.ok) {
+    throw new Error(`Report download failed with status ${response.status}.`)
+  }
+
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  link.click()
+  URL.revokeObjectURL(url)
 }
