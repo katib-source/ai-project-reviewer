@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bell, ChevronDown, Download, FolderUp, Play, ShieldCheck, Sparkles } from 'lucide-react'
+import { Bell, ChevronDown, Download, FolderUp, LoaderCircle, Play, ShieldCheck, Sparkles } from 'lucide-react'
 import './App.css'
 import { FindingsTable } from './components/FindingsTable'
+import { ImportResult, type ImportOutcome } from './components/ImportResult'
 import { MetricCard } from './components/MetricCard'
 import { ProjectTree } from './components/ProjectTree'
 import { Sidebar, type WorkspaceView } from './components/Sidebar'
-import { importProject, selectUploadableFiles, uploadProjectFolder, type ImportedProject } from './services/projectImportService'
+import { importProject, selectUploadableFiles, uploadLimitProblem, uploadProjectFolder, type ImportedProject } from './services/projectImportService'
 import { downloadRemoteReport } from './services/reportExportService'
 import {
   flattenProjectTree,
@@ -35,14 +36,37 @@ function App() {
   const [isImporting, setIsImporting] = useState(false)
   const [projectPath, setProjectPath] = useState('')
   const [importProgress, setImportProgress] = useState<string | null>(null)
+  const [importOutcome, setImportOutcome] = useState<ImportOutcome | null>(null)
   const [error, setError] = useState<string | null>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
   const folderInputRef = useRef<HTMLInputElement | null>(null)
 
-  const attachFolderInput = (input: HTMLInputElement | null) => {
-    folderInputRef.current = input
+  // The folder input only exists while the import dialog is open.
+  useEffect(() => {
+    const input = folderInputRef.current
+    if (!input) return
     // Missing from React's typings: turns the file picker into a folder picker.
-    input?.setAttribute('webkitdirectory', '')
+    input.setAttribute('webkitdirectory', '')
+    // React has no onCancel for inputs; without this, closing the picker would leave the
+    // "Reading folder..." state (and the locked button) in place.
+    const onCancel = () => setImportProgress(null)
+    input.addEventListener('cancel', onCancel)
+    return () => input.removeEventListener('cancel', onCancel)
+  }, [isImporting])
+
+  const chooseFolder = () => {
+    setError(null)
+    // Browsers can take a long time to read a big folder before the page sees it: show it,
+    // and keep the button locked so a second click cannot reopen the picker meanwhile.
+    setImportProgress('Reading folder... big folders can take a while')
+    folderInputRef.current?.click()
+  }
+
+  const openImportDialog = () => {
+    setError(null)
+    setImportProgress(null)
+    setImportOutcome(null)
+    setIsImporting(true)
   }
 
   useEffect(() => {
@@ -133,6 +157,7 @@ function App() {
 
   const runImport = async (source: string, progressMessage: string, request: () => Promise<ImportedProject>) => {
     setError(null)
+    setImportOutcome(null)
     setImportProgress(progressMessage)
     try {
       const imported = await request()
@@ -147,10 +172,19 @@ function App() {
       })
       setAnalysisId(null)
       setReportState('idle')
-      setIsImporting(false)
-      setActiveView('project')
+      setImportOutcome({ kind: 'success', title: 'Project imported', detail: `${source} is ready for analysis.` })
+      // Let the success animation play before revealing the project.
+      window.setTimeout(() => {
+        setIsImporting(false)
+        setImportOutcome(null)
+        setActiveView('project')
+      }, 1600)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Project import failed.')
+      setImportOutcome({
+        kind: 'failure',
+        title: 'Import failed',
+        detail: reason instanceof Error ? reason.message : 'Project import failed.',
+      })
     } finally {
       setImportProgress(null)
     }
@@ -163,18 +197,29 @@ function App() {
   }
 
   const uploadChosenFolder = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const chosen = event.target.files
+    // Copy first: resetting the input below empties its FileList in place.
+    const chosen = Array.from(event.target.files ?? [])
     // Reset so picking the same folder again still fires a change event.
     event.target.value = ''
-    if (!chosen || chosen.length === 0) return
+    if (chosen.length === 0) {
+      setImportProgress(null)
+      return
+    }
     const files = selectUploadableFiles(chosen)
-    if (files.length === 0) {
-      setError('That folder has no files to analyze (dependency and build folders are skipped).')
+    const problem = files.length === 0
+      ? 'That folder has no files to analyze (dependency and build folders, and files over 1 MB, are skipped).'
+      : uploadLimitProblem(files)
+    if (problem) {
+      setImportProgress(null)
+      setImportOutcome({ kind: 'failure', title: 'Cannot upload this folder', detail: problem })
       return
     }
     const folderName = files[0].webkitRelativePath.split('/')[0] || 'folder'
-    await runImport(`${folderName} (${files.length} files uploaded)`, `Uploading ${files.length} files...`,
-      () => uploadProjectFolder(files))
+    const count = `${files.length.toLocaleString()} files`
+    await runImport(`${folderName} (${count} uploaded)`, `Uploading ${count}...`,
+      () => uploadProjectFolder(files, (fraction) => setImportProgress(fraction < 1
+        ? `Uploading ${count}... ${Math.round(fraction * 100)}%`
+        : 'Upload complete, importing project...')))
   }
 
   const navigateTo = (view: WorkspaceView) => {
@@ -189,7 +234,7 @@ function App() {
       <main className="main-content">
         <header className="topbar">
           <div className="breadcrumb"><span>Workspaces</span><ChevronDown size={15} /><strong>AI Project Reviewer</strong></div>
-          <div className="topbar-actions"><button className="icon-button" aria-label="Notifications" type="button"><Bell size={19} /></button><button className="import-button" onClick={() => setIsImporting(true)} type="button"><FolderUp size={17} /> Import project</button></div>
+          <div className="topbar-actions"><button className="icon-button" aria-label="Notifications" type="button"><Bell size={19} /></button><button className="import-button" onClick={openImportDialog} type="button"><FolderUp size={17} /> Import project</button></div>
         </header>
 
         <div className="content-wrap" id="overview">
@@ -229,13 +274,16 @@ function App() {
         <p className="eyebrow">New evaluation</p>
         <h2>Import a project</h2>
         <p>Choose a project folder on your computer. Dependency and build folders (node_modules, .git, target...) are skipped.</p>
-        <input hidden multiple onChange={(event) => void uploadChosenFolder(event)} ref={attachFolderInput} type="file" />
-        <button autoFocus className="primary-button" disabled={importProgress !== null} onClick={() => folderInputRef.current?.click()} type="button"><FolderUp size={16} /> Choose folder...</button>
+        <input hidden multiple onChange={(event) => void uploadChosenFolder(event)} ref={folderInputRef} type="file" />
+        <button aria-busy={importProgress !== null} autoFocus className="primary-button" disabled={importProgress !== null} onClick={chooseFolder} type="button">
+          {importProgress
+            ? <><LoaderCircle className="spin" size={16} /> {importProgress}</>
+            : <><FolderUp size={16} /> Choose folder...</>}
+        </button>
         <p className="import-divider"><span>or enter a path on the backend's machine</span></p>
         <label>Project path<input name="path" onChange={(event) => setProjectPath(event.target.value)} placeholder="/home/you/my-project  or  C:\Users\you\my-project" type="text" value={projectPath} /></label>
         <button className="secondary-button" disabled={!projectPath.trim() || importProgress !== null} type="submit">Import from path</button>
-        {importProgress && <p className="import-status" role="status">{importProgress}</p>}
-        {error && <p className="form-error" role="alert">{error}</p>}
+        {importOutcome && <ImportResult onRetry={() => setImportOutcome(null)} outcome={importOutcome} />}
       </form></div>}
     </div>
   )
