@@ -7,5 +7,5 @@ class LatexEscaperTest {
                 new LatexEscaper().escape("# $ % & _ { } ^ ~ \\"));
     }
     @Test void leavesOrdinaryTextUntouched() { assertEquals("Architecture score: 8/10", new LatexEscaper().escape("Architecture score: 8/10")); }
-    @Test void escapesProjectPathsAndLlmText() { assertEquals("C:\\textbackslash{}\_work\\textbackslash{}review 50\\%", new LatexEscaper().escape("C:\\_work\\review 50%")); }
+    @Test void escapesProjectPathsAndLlmText() { assertEquals("C:\\textbackslash{}\\_work\\textbackslash{}review 50\\%", new LatexEscaper().escape("C:\\_work\\review 50%")); }
 }
