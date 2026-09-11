@@ -31,6 +31,7 @@
     <!-- Plugin versions -->
     <compiler.plugin.version>3.13.0</compiler.plugin.version>
     <surefire.plugin.version>3.5.2</surefire.plugin.version>
+    <dependency.plugin.version>3.11.0</dependency.plugin.version>
     <shade.plugin.version>3.6.0</shade.plugin.version>
   </properties>
 
@@ -119,10 +120,33 @@
         </configuration>
       </plugin>
 
+      <!-- Exposes ${org.mockito:mockito-core:jar} so Surefire can load Mockito as a Java agent. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>${dependency.plugin.version}</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>properties</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!--
+        Tests must pass on every JDK the team uses (21 through 25+). Loading Mockito as an agent
+        replaces its runtime self-attach, which JDK 21+ warns about and future JDKs will block.
+        The Byte Buddy experimental flag lets it instrument class files from JDKs newer than it
+        officially knows, so a teammate on a fresh JDK does not break the build.
+      -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>${surefire.plugin.version}</version>
+        <configuration>
+          <argLine>-javaagent:${org.mockito:mockito-core:jar} -Dnet.bytebuddy.experimental=true</argLine>
+        </configuration>
       </plugin>
 
       <!-- Runnable fat jar: target/ai-project-reviewer.jar -->
