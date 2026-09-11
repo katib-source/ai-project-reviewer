@@ -89,6 +89,15 @@ public final class AppConfig {
     }
 
     /**
+     * The Groq API key, if one is configured. Empty rather than throwing when absent, for the same
+     * reason as {@link #mistralApiKey()}: several keys can be configured side by side, and only the
+     * one matching {@link #llmProvider()} is actually required. Never logged.
+     */
+    public Optional<String> groqApiKey() {
+        return nonBlank(values.get("GROQ_API_KEY"));
+    }
+
+    /**
      * File extensions (without the leading dot) that {@code project} includes when importing.
      */
     public Set<String> allowedFileExtensions() {

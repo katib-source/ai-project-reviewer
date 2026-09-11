@@ -9,12 +9,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -71,10 +71,40 @@ class ResilientLLMProviderTest {
         verify(delegate, times(3)).complete(any());
     }
 
+    /**
+     * Counts calls on their way to a real provider. Used instead of a Mockito {@code spy} on
+     * {@link MockLLMProvider}: spying on a concrete class needs bytecode instrumentation of the
+     * whole type hierarchy, which breaks whenever the JDK is newer than Mockito's Byte Buddy.
+     * An interface-level wrapper keeps these tests independent of the JDK version.
+     */
+    private static final class CountingProvider implements LLMProvider {
+        private final LLMProvider delegate;
+        private final AtomicInteger calls = new AtomicInteger();
+
+        CountingProvider(LLMProvider delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public LLMResponse complete(LLMRequest request) throws LLMException {
+            calls.incrementAndGet();
+            return delegate.complete(request);
+        }
+
+        @Override
+        public String describe() {
+            return delegate.describe();
+        }
+
+        int calls() {
+            return calls.get();
+        }
+    }
+
     @Test
     @DisplayName("delegate always failing: falls back after exactly maxAttempts, forcing fromFallback")
     void fallsBackAfterExhaustingAttempts() throws LLMException {
-        LLMProvider delegate = spy(MockLLMProvider.alwaysFailing());
+        CountingProvider delegate = new CountingProvider(MockLLMProvider.alwaysFailing());
         MockLLMProvider fallback = new MockLLMProvider();
         LLMResponse fallbackAnswer = fallback.complete(request());
 
@@ -86,20 +116,20 @@ class ResilientLLMProviderTest {
         assertTrue(actual.fromFallback(),
                 "the mock reports false about itself; only the decorator knows the primary failed");
         assertFalse(fallbackAnswer.fromFallback(), "and the fallback was left unchanged");
-        verify(delegate, times(4)).complete(any());
+        assertEquals(4, delegate.calls());
     }
 
     @Test
     @DisplayName("delegate always failing with no fallback: the last exception propagates")
     void propagatesWhenNoFallbackConfigured() throws LLMException {
-        LLMProvider delegate = spy(MockLLMProvider.alwaysFailing());
+        CountingProvider delegate = new CountingProvider(MockLLMProvider.alwaysFailing());
         ResilientLLMProvider provider = new ResilientLLMProvider(delegate, null, 3, NO_DELAY);
 
         LLMException failure = assertThrows(LLMException.class, () -> provider.complete(request()));
 
         assertEquals(LLMException.Kind.UNAVAILABLE, failure.kind());
         assertEquals(0, failure.getSuppressed().length, "there was no fallback failure to attach");
-        verify(delegate, times(3)).complete(any());
+        assertEquals(3, delegate.calls());
     }
 
     @Test

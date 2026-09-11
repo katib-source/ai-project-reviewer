@@ -51,6 +51,27 @@ class AppConfigTest {
     }
 
     @Test
+    void groqApiKeyIsEmptyWhenUnset() {
+        AppConfig config = AppConfig.from(Map.of());
+
+        assertTrue(config.groqApiKey().isEmpty());
+    }
+
+    @Test
+    void groqApiKeyIsEmptyWhenBlank() {
+        AppConfig config = AppConfig.from(Map.of("GROQ_API_KEY", "   "));
+
+        assertTrue(config.groqApiKey().isEmpty());
+    }
+
+    @Test
+    void groqApiKeyReturnsTheConfiguredValue() {
+        AppConfig config = AppConfig.from(Map.of("GROQ_API_KEY", "groq-secret"));
+
+        assertEquals("groq-secret", config.groqApiKey().orElseThrow());
+    }
+
+    @Test
     void allowedFileExtensionsDefaultsToABroadSet() {
         AppConfig config = AppConfig.from(Map.of());
 
