@@ -15,7 +15,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -40,7 +42,13 @@ class ReviewServiceTest {
             assertFalse(imported.projectId().isBlank());
             assertEquals("Tests", service.listCriteria().getFirst().name());
             String analysisId = service.startAnalysis(imported.projectId(), List.of("tests"));
-            for (int i = 0; i < 50 && service.findResult(analysisId).isEmpty(); i++) Thread.sleep(20);
+            CountDownLatch completed = new CountDownLatch(1);
+            service.subscribe(analysisId, event -> {
+                if (event instanceof AnalysisEvent.AnalysisCompleted) {
+                    completed.countDown();
+                }
+            });
+            assertTrue(completed.await(5, TimeUnit.SECONDS), "analysis did not complete in time");
             assertTrue(service.findResult(analysisId).isPresent());
             assertEquals(8.0, service.findResult(analysisId).orElseThrow().overallScore());
             assertEquals(1, service.listHistory().size());
