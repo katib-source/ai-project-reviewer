@@ -130,8 +130,10 @@ public final class ReviewService implements AutoCloseable {
 
         try {
             EvaluationResult evaluation = analysisEngine.run(project.tree(), criterionIds, List.of(listener));
-            results.put(analysisId, evaluation);
+            // Persist before publishing: once findResult() sees an analysis, its history entry
+            // (which generateReport() reads) must already exist.
             persistCompletedResult(analysisId, project, evaluation);
+            results.put(analysisId, evaluation);
             publish(new AnalysisEvent.AnalysisCompleted(analysisId, evaluation.overallScore()));
         } catch (Exception e) {
             LOG.error("Analysis {} failed", analysisId, e);
