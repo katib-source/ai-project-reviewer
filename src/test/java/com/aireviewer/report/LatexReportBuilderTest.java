@@ -1,6 +1,9 @@
 package com.aireviewer.report;
+
 import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
 class LatexReportBuilderTest {
     @Test void buildsCompleteDocumentAndEscapesData() {
         String tex = new LatexReportBuilder(new LatexEscaper()).project("demo_project", "/tmp/demo_project").overallScore(8.25)

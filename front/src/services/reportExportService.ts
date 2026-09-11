@@ -59,3 +59,11 @@ export async function downloadRemoteReport(path: string, fileName: string) {
   link.click()
   URL.revokeObjectURL(url)
 }
+
+export async function downloadRemoteLatexAsPdf(path: string, fileName: string) {
+  const response = await fetch(`${API_BASE_URL}${path}`)
+  if (!response.ok) {
+    throw new Error(`LaTeX report download failed with status ${response.status}.`)
+  }
+  downloadPdfFromLatex(await response.text(), fileName)
+}

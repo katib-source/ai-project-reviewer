@@ -1,8 +1,8 @@
 package com.aireviewer.application;
 
+import com.aireviewer.analysis.AbstractAnalyzer;
 import com.aireviewer.analysis.AnalysisEngine;
 import com.aireviewer.analysis.Criterion;
-import com.aireviewer.analysis.AbstractAnalyzer;
 import com.aireviewer.analysis.CriterionResult;
 import com.aireviewer.persistence.AnalysisHistoryStore;
 import com.aireviewer.project.FileNode;
