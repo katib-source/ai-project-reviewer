@@ -2,6 +2,7 @@ package com.aireviewer;
 
 import com.aireviewer.analysis.AnalysisEngine;
 import com.aireviewer.analysis.Criterion;
+import com.aireviewer.analysis.analyzers.BuildCheckAnalyzer;
 import com.aireviewer.analysis.analyzers.FileSizeStatisticsAnalyzer;
 import com.aireviewer.analysis.analyzers.LLMBackedAnalyzer;
 import com.aireviewer.analysis.analyzers.NamingConventionAnalyzer;
@@ -14,6 +15,7 @@ import com.aireviewer.project.UploadedProjectWriter;
 import com.aireviewer.report.LatexEscaper;
 import com.aireviewer.report.LatexReportCompiler;
 import com.aireviewer.application.ReviewService;
+import com.aireviewer.security.DockerSandboxRunner;
 import com.aireviewer.web.ApiRouter;
 import io.javalin.Javalin;
 import io.javalin.config.SizeUnit;
@@ -26,6 +28,8 @@ public final class Main {
     /** Upload caps for the folder picker: generous for a student project, bounded for the disk. */
     private static final int MAX_UPLOAD_FILES = 5_000;
     private static final long MAX_UPLOAD_BYTES = 100_000_000L;
+    /** Matches the tag built by `docker build -t ai-project-reviewer-sandbox:latest sandbox/` (CLAUDE.md §6). */
+    private static final String SANDBOX_IMAGE = "ai-project-reviewer-sandbox:latest";
 
     private Main() { }
     public static void main(String[] args) {
@@ -34,10 +38,12 @@ public final class Main {
         AnalysisHistoryStore history = new AnalysisHistoryStore(config.historyFilePath());
 
         var provider = LLMProviderFactory.create(llmSettings(config));
+        var sandboxRunner = new DockerSandboxRunner(SANDBOX_IMAGE);
 
         AnalysisEngine engine = new AnalysisEngine();
         engine.registerAnalyzer(new FileSizeStatisticsAnalyzer(50_000));
         engine.registerAnalyzer(new NamingConventionAnalyzer());
+        engine.registerAnalyzer(new BuildCheckAnalyzer(sandboxRunner));
         engine.registerAnalyzer(new LLMBackedAnalyzer(
                 new Criterion("architecture-quality", "Architecture Quality", "Evaluates the architecture and separation of responsibilities of the project.", 1.0),
                 provider));
