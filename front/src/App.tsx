@@ -5,7 +5,7 @@ import { FindingsTable } from './components/FindingsTable'
 import { MetricCard } from './components/MetricCard'
 import { ProjectTree } from './components/ProjectTree'
 import { Sidebar, type WorkspaceView } from './components/Sidebar'
-import { importProject } from './services/projectImportService'
+import { importProject, selectUploadableFiles, uploadProjectFolder, type ImportedProject } from './services/projectImportService'
 import { downloadRemoteReport } from './services/reportExportService'
 import {
   flattenProjectTree,
@@ -34,8 +34,16 @@ function App() {
   const [reportState, setReportState] = useState<'idle' | 'generating' | 'ready'>('idle')
   const [isImporting, setIsImporting] = useState(false)
   const [projectPath, setProjectPath] = useState('')
+  const [importProgress, setImportProgress] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
+  const folderInputRef = useRef<HTMLInputElement | null>(null)
+
+  const attachFolderInput = (input: HTMLInputElement | null) => {
+    folderInputRef.current = input
+    // Missing from React's typings: turns the file picker into a folder picker.
+    input?.setAttribute('webkitdirectory', '')
+  }
 
   useEffect(() => {
     void Promise.all([getCriteria(), getAnalysisHistory()])
@@ -123,15 +131,15 @@ function App() {
     }
   }
 
-  const importProjectByPath = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const runImport = async (source: string, progressMessage: string, request: () => Promise<ImportedProject>) => {
     setError(null)
+    setImportProgress(progressMessage)
     try {
-      const imported = await importProject(projectPath.trim())
+      const imported = await request()
       setProject({
         id: imported.projectId,
         name: imported.tree.name,
-        source: projectPath.trim(),
+        source,
         files: flattenProjectTree(imported.tree),
         findings: [],
         coverage: 0,
@@ -143,7 +151,30 @@ function App() {
       setActiveView('project')
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Project import failed.')
+    } finally {
+      setImportProgress(null)
     }
+  }
+
+  const importProjectByPath = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const path = projectPath.trim()
+    await runImport(path, 'Importing project...', () => importProject(path))
+  }
+
+  const uploadChosenFolder = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const chosen = event.target.files
+    // Reset so picking the same folder again still fires a change event.
+    event.target.value = ''
+    if (!chosen || chosen.length === 0) return
+    const files = selectUploadableFiles(chosen)
+    if (files.length === 0) {
+      setError('That folder has no files to analyze (dependency and build folders are skipped).')
+      return
+    }
+    const folderName = files[0].webkitRelativePath.split('/')[0] || 'folder'
+    await runImport(`${folderName} (${files.length} files uploaded)`, `Uploading ${files.length} files...`,
+      () => uploadProjectFolder(files))
   }
 
   const navigateTo = (view: WorkspaceView) => {
@@ -165,7 +196,7 @@ function App() {
           {error && <p className="form-error" role="alert">{error}</p>}
           <section className="page-intro">
             <div><p className="eyebrow">{activeView === 'overview' ? 'Review workspace' : activeView}</p><h1>{project?.name ?? 'No project imported'}</h1><p className="project-source">{project?.source ?? 'Import a local project path to begin.'}</p></div>
-            <div className="analysis-actions"><span className={isRunning ? 'live-status running' : 'live-status'}><i />{isRunning ? progressText : analysisId ? 'Analysis ready' : 'Waiting for project'}</span><button className="primary-button" disabled={isRunning || !project} onClick={() => void startReview()} type="button"><Play size={16} fill="currentColor" />{isRunning ? 'Running analysis' : 'Run analysis'}</button></div>
+            <div className="analysis-actions"><span className={isRunning ? 'live-status running' : 'live-status'}><i />{isRunning ? progressText : analysisId ? 'Analysis ready' : 'Waiting for project'}</span><button aria-busy={isRunning} className="primary-button" disabled={isRunning || !project} onClick={() => void startReview()} type="button"><Play size={16} fill="currentColor" />{isRunning ? 'Running analysis' : 'Run analysis'}</button></div>
           </section>
 
           <section className="metrics-grid" aria-label="Project metrics">
@@ -193,7 +224,19 @@ function App() {
         </div>
       </main>
       {selectedFinding && <div className="detail-backdrop" role="presentation" onClick={() => setSelectedFinding(null)}><article className="finding-detail" aria-label="Finding details" onClick={(event) => event.stopPropagation()}><button className="close-button" onClick={() => setSelectedFinding(null)} type="button">Close</button><span className={`severity ${selectedFinding.severity}`}>{selectedFinding.severity}</span><h2>{selectedFinding.title}</h2><p>{selectedFinding.description}</p><dl><div><dt>Source</dt><dd>{selectedFinding.source}</dd></div><div><dt>Score</dt><dd>{selectedFinding.score}/100</dd></div><div><dt>Evidence</dt><dd>{selectedFinding.id}</dd></div></dl></article></div>}
-      {isImporting && <div className="detail-backdrop" role="presentation" onClick={() => setIsImporting(false)}><form className="import-dialog" aria-label="Import project" onClick={(event) => event.stopPropagation()} onSubmit={(event) => void importProjectByPath(event)}><button className="close-button" onClick={() => setIsImporting(false)} type="button">Close</button><p className="eyebrow">New evaluation</p><h2>Import a project</h2><p>Enter a local path accessible to the backend.</p><label>Project path<input autoFocus name="path" onChange={(event) => setProjectPath(event.target.value)} placeholder="C:\\Users\\you\\Desktop\\my-project" required type="text" value={projectPath} /></label><button className="primary-button" disabled={!projectPath.trim()} type="submit"><FolderUp size={16} /> Import project</button></form></div>}
+      {isImporting && <div className="detail-backdrop" role="presentation" onClick={() => setIsImporting(false)}><form className="import-dialog" aria-busy={importProgress !== null} aria-label="Import project" onClick={(event) => event.stopPropagation()} onSubmit={(event) => void importProjectByPath(event)}>
+        <button className="close-button" onClick={() => setIsImporting(false)} type="button">Close</button>
+        <p className="eyebrow">New evaluation</p>
+        <h2>Import a project</h2>
+        <p>Choose a project folder on your computer. Dependency and build folders (node_modules, .git, target...) are skipped.</p>
+        <input hidden multiple onChange={(event) => void uploadChosenFolder(event)} ref={attachFolderInput} type="file" />
+        <button autoFocus className="primary-button" disabled={importProgress !== null} onClick={() => folderInputRef.current?.click()} type="button"><FolderUp size={16} /> Choose folder...</button>
+        <p className="import-divider"><span>or enter a path on the backend's machine</span></p>
+        <label>Project path<input name="path" onChange={(event) => setProjectPath(event.target.value)} placeholder="/home/you/my-project  or  C:\Users\you\my-project" type="text" value={projectPath} /></label>
+        <button className="secondary-button" disabled={!projectPath.trim() || importProgress !== null} type="submit">Import from path</button>
+        {importProgress && <p className="import-status" role="status">{importProgress}</p>}
+        {error && <p className="form-error" role="alert">{error}</p>}
+      </form></div>}
     </div>
   )
 }

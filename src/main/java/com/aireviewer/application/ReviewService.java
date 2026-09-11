@@ -12,12 +12,15 @@ import com.aireviewer.persistence.PersistenceException;
 import com.aireviewer.project.FileNode;
 import com.aireviewer.project.ProjectImportException;
 import com.aireviewer.project.ProjectImporter;
+import com.aireviewer.project.UploadedProjectFile;
+import com.aireviewer.project.UploadedProjectWriter;
 import com.aireviewer.report.LatexEscaper;
 import com.aireviewer.report.LatexReportBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,6 +38,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * Facade pattern: the web layer depends on one application entry point while this class coordinates
@@ -51,6 +55,7 @@ public final class ReviewService implements AutoCloseable {
     private final AnalysisEngine analysisEngine;
     private final AnalysisHistoryStore history;
     private final LatexEscaper escaper;
+    private final UploadedProjectWriter uploads;
     private final ExecutorService executor;
     private final Map<String, ImportedProject> projects = new ConcurrentHashMap<>();
     private final Map<String, EvaluationResult> results = new ConcurrentHashMap<>();
@@ -60,8 +65,9 @@ public final class ReviewService implements AutoCloseable {
     public ReviewService(ProjectImporter projectImporter,
                          AnalysisEngine analysisEngine,
                          AnalysisHistoryStore history,
-                         LatexEscaper escaper) {
-        this(projectImporter, analysisEngine, history, escaper,
+                         LatexEscaper escaper,
+                         UploadedProjectWriter uploads) {
+        this(projectImporter, analysisEngine, history, escaper, uploads,
                 Executors.newVirtualThreadPerTaskExecutor());
     }
 
@@ -69,11 +75,13 @@ public final class ReviewService implements AutoCloseable {
                   AnalysisEngine analysisEngine,
                   AnalysisHistoryStore history,
                   LatexEscaper escaper,
+                  UploadedProjectWriter uploads,
                   ExecutorService executor) {
         this.projectImporter = Objects.requireNonNull(projectImporter, "projectImporter");
         this.analysisEngine = Objects.requireNonNull(analysisEngine, "analysisEngine");
         this.history = Objects.requireNonNull(history, "history");
         this.escaper = Objects.requireNonNull(escaper, "escaper");
+        this.uploads = Objects.requireNonNull(uploads, "uploads");
         this.executor = Objects.requireNonNull(executor, "executor");
     }
 
@@ -84,6 +92,18 @@ public final class ReviewService implements AutoCloseable {
         ImportedProject project = new ImportedProject(projectId, tree);
         projects.put(projectId, project);
         return project;
+    }
+
+    /**
+     * Imports a project uploaded from the browser's folder picker: the files are stored in a
+     * private temporary directory, then imported exactly like a local path.
+     */
+    public ImportedProject importUploadedProject(List<UploadedFile> files) throws ProjectImportException {
+        Objects.requireNonNull(files, "files");
+        List<UploadedProjectFile> projectFiles = files.stream()
+                .map(file -> new UploadedProjectFile(file.relativePath(), file.content()))
+                .toList();
+        return importProject(uploads.write(projectFiles));
     }
 
     public List<Criterion> listCriteria() {
@@ -253,8 +273,12 @@ public final class ReviewService implements AutoCloseable {
             executor.shutdownNow();
             Thread.currentThread().interrupt();
         }
+        // Only once no analysis can still be reading them.
+        uploads.close();
     }
 
     public record ImportedProject(String projectId, FileNode tree) { }
+    /** One uploaded file: its path relative to the chosen folder, and a way to open its content. */
+    public record UploadedFile(String relativePath, Supplier<InputStream> content) { }
     public record ReportFiles(Path texFile, Path pdfFile) { }
 }

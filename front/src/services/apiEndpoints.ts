@@ -4,6 +4,7 @@ export const API_ENDPOINTS = {
   criteria: '/api/criteria',
   projects: {
     import: '/api/projects',
+    upload: '/api/projects/upload',
   },
   analyses: {
     list: '/api/analyses',
