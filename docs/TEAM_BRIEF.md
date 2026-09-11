@@ -108,6 +108,7 @@ backend.
 | Method & path | Request | Response |
 |---|---|---|
 | `POST /api/projects` | `{path}` | `{projectId, tree}` |
+| `POST /api/projects/upload` | multipart: one `files` part per file, filename = path relative to the chosen folder | `{projectId, tree}` |
 | `GET /api/criteria` | — | list of available criteria |
 | `POST /api/analyses` | `{projectId, criterionIds}` | `{analysisId}` |
 | `GET /api/analyses/{id}/events` | — | **SSE**: `criterion-started`, `criterion-completed`, `analysis-completed`, `error` |
@@ -171,7 +172,8 @@ integration point where everyone's work lands — heaviest role, first to pull i
 - Tests: escaper edge cases, builder output structure, Facade against mocked collaborators.
 
 **Role 6 — React Frontend.** `frontend/` (Vite project, never under `src/main/java`).
-- Project picker (path input) → file tree view from `POST /api/projects`.
+- Project picker (folder upload via `POST /api/projects/upload`, or path input via
+  `POST /api/projects`) → file tree view.
 - Criteria checklist from `GET /api/criteria`; start an analysis.
 - Live progress from the SSE stream (per-criterion status, error events).
 - Results view: per-criterion scores, comments, consolidated score; report download button.

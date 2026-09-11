@@ -10,6 +10,7 @@ public final class ApiRouter {
         Objects.requireNonNull(app); Objects.requireNonNull(service); Objects.requireNonNull(reportDirectory); Objects.requireNonNull(compiler);
         ProjectController projects = new ProjectController(service); CriteriaController criteria = new CriteriaController(service); AnalysisController analyses = new AnalysisController(service); SseController sse = new SseController(service); ReportController reports = new ReportController(service, reportDirectory, compiler); HistoryController history = new HistoryController(service);
         app.post("/api/projects", projects::importProject);
+        app.post("/api/projects/upload", projects::uploadProject);
         app.get("/api/criteria", criteria::list);
         app.post("/api/analyses", analyses::start);
         app.sse("/api/analyses/{id}/events", sse::stream);
