@@ -22,16 +22,72 @@ import java.util.regex.Pattern;
  *
  * <p>False positives are expected and acceptable. A project that itself does LLM grading — this one,
  * for instance — legitimately contains JSON with a {@code score} field and prose about ignoring
- * instructions, and will light up several signals. That is why nothing branches on the result.
+ * instructions, and will light up several signals. That is why nothing branches on the result. The
+ * French and Chinese alternations inherit exactly that looseness and no more: a comment reading
+ * "on oublie toutes les regles de nommage" flags, and so does its English equivalent "forget all the
+ * naming rules". Tightening French to imperative verb forms only would cut those, at the cost of
+ * missing a real attack written in the second person — the wrong trade for an advisory signal.
  *
  * <p>These findings could later feed the security criterion's report section ("the analyzed project
  * contains text that attempts to manipulate an automated reviewer"), which would turn an attack into
  * a genuine finding about the project. Not wired up — the analysis side owns that decision.
  *
  * <p>Scanning happens <em>after</em> {@link PromptBuilder} sanitizes the content, so zero-width
- * characters and homoglyphs cannot hide a phrase from these patterns. Stateless and thread-safe.
+ * characters and homoglyphs cannot hide a phrase from these patterns.
+ *
+ * <p>{@code instruction-override} and {@code role-change} also match French and Chinese phrasings,
+ * those being the two shapes an attacker gets for free by running an English attempt through a
+ * translator. The other three labels stay English-only, and that is the honest limit of a keyword
+ * scanner: it will always be one language and one paraphrase behind. It is exactly why
+ * {@link PromptBuilder} states the cross-lingual rule in the prompt instead of relying on
+ * detection — a translated injection this class misses is still structurally contained.
+ *
+ * <p>Stateless and thread-safe.
  */
 public final class PromptInjectionDetector {
+
+    // Non-ASCII literals are written as escapes so no encoding mishap can silently break a pattern.
+    // These are compile-time constants, so declaration order relative to SIGNALS does not matter.
+
+    /** e-acute, as in "precedentes". */
+    private static final String E_ACUTE = "\u00e9";
+    /** e-grave, as in "regles". */
+    private static final String E_GRAVE = "\u00e8";
+    /** "etes" with e-circumflex, as in "vous etes maintenant". */
+    private static final String E_GRAVE_TES = "\u00eates";
+    /** a-grave, as in "a partir de maintenant". */
+    private static final String A_GRAVE = "\u00e0";
+    /** o-circumflex, as in "role". */
+    private static final String O_CIRC = "\u00f4";
+
+    /** Chinese "ignore" (hu lue). */
+    private static final String ZH_IGNORE = "\u5ffd\u7565";
+    /** Chinese "disregard", simplified (wu shi). */
+    private static final String ZH_DISREGARD = "\u65e0\u89c6";
+    /** Chinese "disregard", traditional. */
+    private static final String ZH_DISREGARD_TRAD = "\u7121\u8996";
+    /** Chinese "forget" (wang ji). */
+    private static final String ZH_FORGET = "\u5fd8\u8bb0";
+    /** Chinese "instruction" (zhi ling). */
+    private static final String ZH_INSTRUCTION = "\u6307\u4ee4";
+    /** Chinese "directive" (zhi shi). */
+    private static final String ZH_DIRECTIVE = "\u6307\u793a";
+    /** Chinese "command" (ming ling). */
+    private static final String ZH_COMMAND = "\u547d\u4ee4";
+    /** Chinese "prompt" (ti shi). */
+    private static final String ZH_PROMPT = "\u63d0\u793a";
+    /** Chinese "rules", simplified (gui ze). */
+    private static final String ZH_RULES = "\u89c4\u5219";
+    /** Chinese "rules", traditional. */
+    private static final String ZH_RULES_TRAD = "\u898f\u5247";
+    /** Chinese "you are now" (ni xian zai shi). */
+    private static final String ZH_YOU_ARE_NOW = "\u4f60\u73b0\u5728\u662f";
+    /** Chinese "from now on" (cong xian zai kai shi). */
+    private static final String ZH_FROM_NOW_ON = "\u4ece\u73b0\u5728\u5f00\u59cb";
+    /** Chinese "pretend" (jia zhuang). */
+    private static final String ZH_PRETEND = "\u5047\u88c5";
+    /** Chinese "act as / play the role of" (ban yan). */
+    private static final String ZH_ACT_AS = "\u626e\u6f14";
 
     /**
      * Label → pattern, in a {@link LinkedHashMap} so the reported order is stable and tests can
@@ -46,12 +102,33 @@ public final class PromptInjectionDetector {
         // "ignore all previous instructions", "disregard the rules above", ...
         // Both word orders matter: the qualifier can precede the noun ("previous instructions") or
         // follow it ("the rules above"), and only matching one of them would miss half the phrasings.
-        String verb = "\\b(ignore|disregard|forget|override|bypass)\\b";
-        String qualifier = "\\b(previous|prior|earlier|above|preceding|all)\\b";
-        String noun = "\\b(instruction|instructions|prompt|prompts|rule|rules|direction|directions)\\b";
         String gap = "[^\\n]{0,30}";
+        String verb = "\\b(?:ignore|disregard|forget|override|bypass)\\b";
+        String qualifier = "\\b(?:previous|prior|earlier|above|preceding|all)\\b";
+        String noun = "\\b(?:instruction|instructions|prompt|prompts|rule|rules|direction|directions)\\b";
+        String english = verb + gap + "(?:" + qualifier + gap + noun + "|" + noun + gap + qualifier + ")";
+
+        // French, the same verb-qualifier-noun shape. Accents are optional inside the character
+        // classes: an attacker types whatever their keyboard gives them, and the sanitizer's NFKC
+        // pass folds width and compatibility forms but deliberately leaves accents alone.
+        String frVerb = "(?:ignore[rz]?|oubli(?:e|ez|er)|n[e" + E_ACUTE + "]glige[rz]?"
+                + "|ne tiens pas compte)";
+        String frQualifier = "(?:pr[e" + E_ACUTE + "]c[e" + E_ACUTE + "]dentes?|ci-dessus"
+                + "|ant[e" + E_ACUTE + "]rieures?|toutes?|tous)";
+        String frNoun = "(?:instructions?|consignes?|r[e" + E_GRAVE + "]gles?|directives?)";
+        String french = frVerb + gap + "(?:" + frQualifier + gap + frNoun + "|"
+                + frNoun + gap + frQualifier + ")";
+
+        // Chinese carries no word boundaries that \\b can see - \\b is defined in terms of \\w, which
+        // does not apply to these scripts - so this is verb followed by noun within a short span,
+        // which is how the phrasing works anyway: "ignore / all the above / instructions".
+        String chinese = "(?:" + ZH_IGNORE + "|" + ZH_DISREGARD + "|" + ZH_DISREGARD_TRAD + "|"
+                + ZH_FORGET + ")[^\\n]{0,10}(?:" + ZH_INSTRUCTION + "|" + ZH_DIRECTIVE + "|"
+                + ZH_COMMAND + "|" + ZH_PROMPT + "|" + ZH_RULES + "|" + ZH_RULES_TRAD + ")";
+
+        // (?u) so case folding reaches accented letters; ASCII folding is unaffected by it.
         signals.put("instruction-override", Pattern.compile(
-                "(?i)" + verb + gap + "(" + qualifier + gap + noun + "|" + noun + gap + qualifier + ")"));
+                "(?iu)(?:" + english + "|" + french + "|" + chinese + ")"));
 
         // Text pretending to be a new conversational turn or a system prompt. The line-start
         // anchor tolerates comment markers, because the usual hiding place is a code comment:
@@ -62,13 +139,23 @@ public final class PromptInjectionDetector {
                         + "|#{2,}\\s*(system|instructions?)\\s*#{2,}"
                         + "|\\[\\s*(system|system prompt)\\s*\\]"));
 
-        // Attempts to reassign the model's role.
-        signals.put("role-change", Pattern.compile(
-                "(?i)\\byou are now\\b"
-                        + "|\\bfrom now on\\b[^\\n]{0,25}\\byou\\b"
-                        + "|\\bpretend to be\\b"
-                        + "|\\bact as\\b[^\\n]{0,20}\\b(assistant|model|reviewer|grader|evaluator)\\b"
-                        + "|\\byour new (role|task|instructions?)\\b"));
+        // Attempts to reassign the model's role, in English, French and Chinese.
+        String enRole = "\\byou are now\\b"
+                + "|\\bfrom now on\\b[^\\n]{0,25}\\byou\\b"
+                + "|\\bpretend to be\\b"
+                + "|\\bact as\\b[^\\n]{0,20}\\b(?:assistant|model|reviewer|grader|evaluator)\\b"
+                + "|\\byour new (?:role|task|instructions?)\\b";
+        String frRole = "|(?:tu es|vous " + E_GRAVE_TES + ")\\s+maintenant"
+                + "|d[e" + E_ACUTE + "]sormais,?\\s+(?:tu|vous)\\b"
+                + "|" + A_GRAVE + " partir de maintenant,?\\s+(?:tu|vous)\\b"
+                + "|\\bagis(?:sez)? comme\\b"
+                + "|\\bfais(?:-|\\s)comme si\\b"
+                + "|\\b(?:ton|votre) nouveau r[o" + O_CIRC + "]le\\b";
+        String zhRole = "|" + ZH_YOU_ARE_NOW
+                + "|" + ZH_FROM_NOW_ON
+                + "|" + ZH_PRETEND
+                + "|" + ZH_ACT_AS;
+        signals.put("role-change", Pattern.compile("(?iu)" + enRole + frRole + zhRole));
 
         // Direct attempts to dictate the grade.
         signals.put("score-manipulation", Pattern.compile(
