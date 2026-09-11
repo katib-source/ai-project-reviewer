@@ -23,7 +23,7 @@
 
     <!-- Dependency versions: bump here, never inline. Ask the team before adding a NEW dependency. -->
     <junit.version>5.11.4</junit.version>
-    <mockito.version>5.14.2</mockito.version>
+    <mockito.version>5.23.0</mockito.version>
     <jackson.version>2.18.2</jackson.version>
     <slf4j.version>2.0.16</slf4j.version>
     <javalin.version>6.3.0</javalin.version>
