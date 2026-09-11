@@ -33,6 +33,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 /**
@@ -42,6 +43,9 @@ import java.util.function.Consumer;
 public final class ReviewService implements AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(ReviewService.class);
+
+    /** Bound on how long {@link #close()} waits for an in-flight analysis to finish before forcing shutdown. */
+    private static final long SHUTDOWN_TIMEOUT_SECONDS = 10;
 
     private final ProjectImporter projectImporter;
     private final AnalysisEngine analysisEngine;
@@ -237,7 +241,16 @@ public final class ReviewService implements AutoCloseable {
 
     @Override
     public void close() {
-        executor.shutdownNow();
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                LOG.warn("Executor did not terminate within {}s; forcing shutdown", SHUTDOWN_TIMEOUT_SECONDS);
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 
     public record ImportedProject(String projectId, FileNode tree) { }
