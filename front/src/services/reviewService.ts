@@ -1,3 +1,7 @@
+import { apiClient } from './apiClient'
+import { API_BASE_URL, API_ENDPOINTS } from './apiEndpoints'
+import type { ProjectTreeNode } from './projectImportService'
+
 export type FindingSeverity = 'critical' | 'warning' | 'info'
 
 export interface ProjectFile {
@@ -17,6 +21,7 @@ export interface Finding {
 }
 
 export interface ReviewProject {
+  id: string
   name: string
   source: string
   files: ProjectFile[]
@@ -25,61 +30,109 @@ export interface ReviewProject {
   score: number
 }
 
-const currentProject: ReviewProject = {
-  name: 'billing-service',
-  source: 'github.com/acme/billing-service',
-  coverage: 92,
-  score: 78,
-  files: [
-    { path: 'billing-service', kind: 'folder', depth: 0 },
-    { path: 'src', kind: 'folder', depth: 1 },
-    { path: 'main', kind: 'folder', depth: 2 },
-    { path: 'java', kind: 'folder', depth: 3 },
-    { path: 'PaymentProcessor.java', kind: 'file', depth: 4, status: 'included' },
-    { path: 'InvoiceService.java', kind: 'file', depth: 4, status: 'included' },
-    { path: 'test', kind: 'folder', depth: 2 },
-    { path: 'Dockerfile', kind: 'file', depth: 1, status: 'excluded' },
-  ],
-  findings: [
-    {
-      id: 'AR-102',
-      title: 'Payment orchestration has competing responsibilities',
-      description: 'PaymentProcessor coordinates validation, gateway calls, and persistence.',
-      severity: 'critical',
-      source: 'Architecture analysis',
-      score: 42,
-    },
-    {
-      id: 'DP-041',
-      title: 'Gateway selection could use a Strategy boundary',
-      description: 'Provider-specific branching makes the payment flow harder to extend.',
-      severity: 'warning',
-      source: 'Design pattern review',
-      score: 71,
-    },
-    {
-      id: 'QL-018',
-      title: 'Invoice creation has strong test coverage',
-      description: 'Relevant test cases cover successful and failed payment scenarios.',
-      severity: 'info',
-      source: 'Quality analysis',
-      score: 91,
-    },
-  ],
+export interface Criterion {
+  id: string
+  name: string
+  description: string
+  weight: number
 }
 
-export const reviewService = {
-  getCurrentProject: async (): Promise<ReviewProject> => currentProject,
-  startAnalysis: async (): Promise<void> => undefined,
-  createReport: (project: ReviewProject): string => `\\documentclass{article}
-\\title{AI Project Reviewer: ${project.name}}
-\\date{\\today}
-\\begin{document}
-\\maketitle
-\\section*{Overview}
-Project score: ${project.score}/100. Analysis coverage: ${project.coverage}\\%.
-\\section*{Findings}
-${project.findings.map((finding) => `\\subsection*{${finding.id}: ${finding.title}}\n${finding.description}\n`).join('\n')}
-\\end{document}
-`,
+export interface CriterionResult {
+  criterionId: string
+  criterionName: string
+  successful: boolean
+  score: number
+  comment: string
+}
+
+export interface AnalysisResult {
+  analysisId: string
+  overallScore: number
+  criteria: CriterionResult[]
+}
+
+export interface AnalysisHistoryItem {
+  analysisId: string
+  projectPath: string
+  projectName: string
+  overallScore: number
+  completedAt: string
+}
+
+export interface ReportResponse {
+  texUrl: string
+  pdfUrl: string
+}
+
+export interface AnalysisProgress {
+  criterionId?: string
+  criterionName?: string
+  successful?: boolean
+  score?: number
+  comment?: string
+  overallScore?: number
+  message?: string
+}
+
+export function flattenProjectTree(node: ProjectTreeNode, depth = 0, parentPath = ''): ProjectFile[] {
+  const path = parentPath ? `${parentPath}/${node.name}` : node.name
+  const files: ProjectFile[] = [{
+    path,
+    kind: node.type === 'directory' ? 'folder' : 'file',
+    status: node.type === 'file' ? 'included' : undefined,
+    depth,
+  }]
+
+  for (const child of node.children) {
+    files.push(...flattenProjectTree(child, depth + 1, path))
+  }
+  return files
+}
+
+export function getCriteria() {
+  return apiClient<Criterion[]>(API_ENDPOINTS.criteria)
+}
+
+export function startAnalysis(projectId: string, criterionIds: string[]) {
+  return apiClient<{ analysisId: string }>(API_ENDPOINTS.analyses.start, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectId, criterionIds }),
+  })
+}
+
+export function getAnalysis(analysisId: string) {
+  return apiClient<AnalysisResult>(API_ENDPOINTS.analyses.result(analysisId))
+}
+
+export function getAnalysisHistory() {
+  return apiClient<AnalysisHistoryItem[]>(API_ENDPOINTS.analyses.list)
+}
+
+export function generateReport(analysisId: string) {
+  return apiClient<ReportResponse>(API_ENDPOINTS.analyses.report(analysisId), { method: 'POST' })
+}
+
+export function openAnalysisEvents(
+  analysisId: string,
+  handlers: {
+    onStarted: (event: AnalysisProgress) => void
+    onCompleted: (event: AnalysisProgress) => void
+    onError: (event: AnalysisProgress) => void
+  },
+) {
+  const eventSource = new EventSource(`${API_BASE_URL}${API_ENDPOINTS.analyses.events(analysisId)}`)
+  const parse = (event: MessageEvent<string>) => {
+    if (!event.data) return {}
+    try {
+      return JSON.parse(event.data) as AnalysisProgress
+    } catch {
+      return { message: 'The backend sent an invalid analysis event.' }
+    }
+  }
+  eventSource.addEventListener('criterion-started', (event) => handlers.onStarted(parse(event as MessageEvent<string>)))
+  eventSource.addEventListener('criterion-completed', (event) => handlers.onCompleted(parse(event as MessageEvent<string>)))
+  eventSource.addEventListener('analysis-completed', (event) => handlers.onCompleted(parse(event as MessageEvent<string>)))
+  eventSource.addEventListener('error', (event) => handlers.onError(parse(event as MessageEvent<string>)))
+  return eventSource
 }
