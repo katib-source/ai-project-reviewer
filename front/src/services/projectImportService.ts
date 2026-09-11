@@ -1,23 +1,22 @@
 import { apiClient } from './apiClient'
 import { API_ENDPOINTS } from './apiEndpoints'
 
-export interface ImportedProject {
-  analysisId: string
-  projectName: string
+export interface ProjectTreeNode {
+  name: string
+  type: 'directory' | 'file'
+  sizeInBytes: number
+  children: ProjectTreeNode[]
 }
 
-export async function importProjectArchive(
-  archive: File,
-  includeTests: boolean,
-  sandboxEnabled: boolean,
-): Promise<ImportedProject> {
-  const formData = new FormData()
-  formData.append('archive', archive)
-  formData.append('includeTests', String(includeTests))
-  formData.append('sandboxEnabled', String(sandboxEnabled))
+export interface ImportedProject {
+  projectId: string
+  tree: ProjectTreeNode
+}
 
+export async function importProject(path: string): Promise<ImportedProject> {
   return apiClient<ImportedProject>(API_ENDPOINTS.projects.import, {
     method: 'POST',
-    body: formData,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path }),
   })
 }
